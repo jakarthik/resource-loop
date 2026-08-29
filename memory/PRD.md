@@ -48,6 +48,16 @@ Build Loop, a production-quality mobile-first campus marketplace for one-time sk
 - Verification completed for the Google redirect entry, invalid callback handling, OTP fallback, cookie restoration, authenticated home load, clean frontend build, and `20/20` backend tests.
 - A real institutional Google account was not provided, so the final provider consent-and-return step remains for controlled user verification; no Google password should be stored by Loop.
 
+## Prototype-parity build (2026-06)
+Recreated the attached `loop_demo.html` prototype as a real, persistent app while KEEPING the existing dark/lime theme (explicit user choice). Now DONE and tested (iteration_6, 100%/100%):
+- Full 5-step onboarding (email → OTP 123456 → profile → student-ID upload → personalize), persisted per-user in MongoDB; Google sign-in retained.
+- Verification is a real transaction gate (unverified students 403 on hire/rent/post/apply); mock campus-admin approve endpoint.
+- Search-first Explore with live match %, no-match → request flow.
+- FCFS: request → notify ≥50%-match providers → ordered applications → needer selects → hire tx.
+- Full SERVICE and RESOURCE transaction state machines with mock UPI payment, contact reveal after payment, deposit hold/refund, completion, and reviews (COMPLETED-only, recomputes provider rating).
+- Seeded demo records flagged `seed:true` to distinguish from real user-created data.
+- See CHANGELOG.md for full detail.
+
 ## Prioritized backlog
 - P0: Run one controlled real institutional Google login to verify consent return and persisted Google session data end-to-end.
 - P0: Build the FCFS provider application and needer selection flow, then persist requests, applications, transactions, notifications, and reviews in MongoDB with ownership checks.

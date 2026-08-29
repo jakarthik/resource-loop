@@ -1,44 +1,389 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { Bell, Check, ChevronRight, ClipboardList, Compass, FileText, Home, Lightbulb, LockKeyhole, Menu, Package, Plus, Search, ShieldCheck, Sparkles, Star, UserRound, WalletCards, X } from "lucide-react";
+import { Bell, Check, ChevronRight, ClipboardList, Compass, FileText, Home, Lightbulb, LockKeyhole, LogOut, Package, Plus, Search, ShieldCheck, Sparkles, Star, Upload, UserRound, WalletCards, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "@/App.css";
 
-const API=`${process.env.REACT_APP_BACKEND_URL}/api`;
-const client=axios.create({baseURL:API,withCredentials:true});
-const nav=[['home','Home',Home],['explore','Explore',Compass],['requests','Requests',ClipboardList],['profile','Profile',UserRound],['insights','Insights',Lightbulb]];
-const money=n=>`₹${n}`;
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const client = axios.create({ baseURL: API, withCredentials: true });
+const nav = [['home', 'Home', Home], ['explore', 'Explore', Compass], ['requests', 'Requests', ClipboardList], ['profile', 'Profile', UserRound], ['insights', 'Insights', Lightbulb]];
+const money = n => `₹${n}`;
+const initials = name => (name || 'U').split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
 
-function Badge({children,tone=''}){return <span data-testid={`badge-${String(children).toLowerCase().replaceAll(' ','-')}`} className={`badge ${tone}`}>{children}</span>}
-function Avatar({name,small=false}){return <div data-testid={`avatar-${name.toLowerCase().replaceAll(' ','-')}`} className={`avatar ${small?'small':''}`}>{name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div>}
+const STATUS_LABEL = {
+  HIRE_REQUESTED: 'Hire requested', PROVIDER_ACCEPTED: 'Provider accepted', PAYMENT_SECURED: 'Payment secured',
+  PROVIDER_COMPLETED: 'Work delivered', COMPLETED: 'Completed', DECLINED: 'Declined',
+  RENTAL_REQUESTED: 'Rental requested', OWNER_ACCEPTED: 'Owner accepted', PICKED_UP: 'Picked up',
+  RETURNED: 'Returned', RETURN_CONFIRMED: 'Return confirmed',
+};
+function nextActions(tx) {
+  const s = tx.status;
+  if (tx.kind === 'service') {
+    if (s === 'HIRE_REQUESTED') return [['accept', 'Provider accepts', 'primary'], ['decline', 'Decline', 'secondary']];
+    if (s === 'PROVIDER_ACCEPTED') return [['pay', `Pay ${money(tx.amount)} via UPI`, 'primary']];
+    if (s === 'PAYMENT_SECURED') return [['complete', 'Provider marks delivered', 'primary']];
+    if (s === 'PROVIDER_COMPLETED') return [['confirm', 'Confirm & release payment', 'primary']];
+  } else {
+    if (s === 'RENTAL_REQUESTED') return [['accept', 'Owner accepts', 'primary'], ['decline', 'Decline', 'secondary']];
+    if (s === 'OWNER_ACCEPTED') return [['pay', `Pay ${money(tx.amount + tx.deposit)} via UPI`, 'primary']];
+    if (s === 'PAYMENT_SECURED') return [['pickup', 'Mark picked up', 'primary']];
+    if (s === 'PICKED_UP') return [['return', 'Mark returned', 'primary']];
+    if (s === 'RETURNED') return [['confirm_return', 'Owner confirms · refund deposit', 'primary']];
+  }
+  return [];
+}
 
-function Auth({onDone,initialError=''}){const [step,setStep]=useState('welcome');const [email,setEmail]=useState('harvey@student.nitandhra.ac.in');const [otp,setOtp]=useState('');const [error,setError]=useState(initialError);
- const send=async()=>{try{await client.post('/auth/send-otp',{email});setStep('otp');setError('')}catch(e){setError(e.response?.data?.detail||'Use a valid NIT AP email')}};
- const verify=async()=>{try{const r=await client.post('/auth/verify-otp',{email,otp});onDone(r.data.user,r.data.token)}catch(e){setError(e.response?.data?.detail||'Invalid OTP')}};
- const googleSignIn=()=>{/* REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH */ const redirectUrl=window.location.origin+'/';window.location.href=`https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`};
- return <main className="auth-page"><div className="auth-orbit"></div><div className="auth-card"><div className="brand-mark">↻</div><p className="eyebrow">NIT ANDHRA PRADESH · CAMPUS NETWORK</p>{step==='welcome'&&<><h1>Welcome to <em>Loop</em></h1><p className="auth-copy">Your campus. Your skills. Your resources.</p><div className="auth-ribbon"><span>Need</span><b>→</b><span>Find</span><b>→</b><span>Done</span></div><button data-testid="google-sign-in-button" className="button google wide" onClick={googleSignIn}>Continue with Google <ChevronRight size={18}/></button><button data-testid="continue-institutional-email-button" className="button primary wide" onClick={()=>setStep('email')}>Continue with institutional email <ChevronRight size={18}/></button></>}{step==='email'&&<><h2>Let’s find your campus fit.</h2><p className="muted">Use your NIT Andhra Pradesh email. We’ll detect your role automatically.</p><label>Email address<input data-testid="institutional-email-input" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@student.nitandhra.ac.in" /></label><p className="tiny">Student: @student.nitandhra.ac.in · Faculty: @nitandhra.ac.in</p><button data-testid="send-otp-button" className="button primary wide" onClick={send}>Send verification code <ChevronRight size={18}/></button></>}{step==='otp'&&<><h2>Check your inbox.</h2><p className="muted">We sent a 6-digit code to <strong>{email}</strong></p><label>Verification code<input data-testid="otp-input" inputMode="numeric" maxLength="6" value={otp} onChange={e=>setOtp(e.target.value)} placeholder="123456" /></label><p className="demo-note" data-testid="demo-otp-note"><Sparkles size={15}/> Demo code: <b>123456</b></p><button data-testid="verify-otp-button" className="button primary wide" onClick={verify}>Verify email <Check size={18}/></button></>}{error&&<p className="error" data-testid="auth-error"><X size={15}/>{error}</p>}<p className="auth-footer">Email verified first. Student verification stays separate.</p></div></main>}
+function Badge({ children, tone = '' }) { return <span data-testid={`badge-${String(children).toLowerCase().replaceAll(' ', '-')}`} className={`badge ${tone}`}>{children}</span> }
+function Avatar({ name, small = false }) { return <div data-testid={`avatar-${(name || '').toLowerCase().replaceAll(' ', '-')}`} className={`avatar ${small ? 'small' : ''}`}>{initials(name)}</div> }
 
-function AuthCallback({onDone,onError}){const location=useLocation();const navigate=useNavigate();const processed=useRef(false);useEffect(()=>{if(processed.current)return;processed.current=true;const sessionId=new URLSearchParams(location.hash.replace(/^#/,'' )).get('session_id');if(!sessionId){onError('Google sign-in did not return a valid session.');navigate('/',{replace:true});return}client.post('/auth/google/session',{session_id:sessionId}).then(response=>{onDone(response.data);navigate('/',{replace:true})}).catch(error=>{onError(error.response?.data?.detail||'Google sign-in could not be completed.');navigate('/',{replace:true})})},[location.hash,navigate,onDone,onError]);return <div className="auth-callback" data-testid="google-auth-callback" role="status">Signing you into Loop…</div>}
+/* ---------------- Auth (welcome + email + OTP) ---------------- */
+function Auth({ onDone, initialError = '' }) {
+  const [step, setStep] = useState('welcome');
+  const [email, setEmail] = useState('harvey@student.nitandhra.ac.in');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [error, setError] = useState(initialError);
+  const boxes = useRef([]);
+  const role = email.toLowerCase().endsWith('@student.nitandhra.ac.in') ? 'Student' : email.toLowerCase().endsWith('@nitandhra.ac.in') ? 'Faculty' : null;
+  const send = async () => { try { await client.post('/auth/send-otp', { email }); setError(''); setStep('otp'); } catch (e) { setError(e.response?.data?.detail || 'Use a valid NIT AP email'); } };
+  const setDigit = (i, v) => { const d = v.replace(/\D/g, '').slice(-1); const n = [...otp]; n[i] = d; setOtp(n); if (d && boxes.current[i + 1]) boxes.current[i + 1].focus(); };
+  const onKey = (i, e) => { if (e.key === 'Backspace' && !otp[i] && boxes.current[i - 1]) boxes.current[i - 1].focus(); };
+  const verify = async () => { const code = otp.join(''); if (code.length < 6) { setError('Enter all 6 digits.'); return; } try { const r = await client.post('/auth/verify-otp', { email, otp: code }); onDone(r.data.user, r.data.token); } catch (e) { setError(e.response?.data?.detail || 'Invalid code'); } };
+  const google = () => { /* REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH */ const redirectUrl = window.location.origin + '/'; window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`; };
+  return (
+    <main className="onboard-page">
+      <div className="onboard-shell">
+        <aside className="onboard-brand">
+          <div><div className="logo"><span>↻</span> loop</div><p className="kicker">NIT AP · PILOT</p>
+            <h1 className="brand-hero">Need it?<br />Find it.<br />Have it?<br /><em>Loop it.</em></h1>
+            <p className="brand-copy">A campus marketplace for one-time skills and underused resources.</p>
+            <div className="brand-quote">"Don't buy it. Don't learn it. Find someone who already can."</div>
+          </div>
+          <p className="tiny">Institutional email establishes campus affiliation. Student ID verification is required before student transactions.</p>
+        </aside>
+        <section className="onboard-panel">
+          <div className="onboard-progress"><span className="on" /><span className={step === 'otp' ? 'on' : ''} /><span /><span /><span /></div>
+          {step === 'welcome' && <div className="ob-step" data-testid="onboarding-welcome">
+            <p className="eyebrow">WELCOME</p><h2>Welcome to Loop</h2><p className="muted">Your campus. Your skills. Your resources.</p>
+            <label>Institutional email<input data-testid="institutional-email-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="harvey@student.nitandhra.ac.in" /></label>
+            <p className="tiny">Student: <b>name@student.nitandhra.ac.in</b> · Faculty: <b>name@nitandhra.ac.in</b></p>
+            {role && <span className="role-pill" data-testid="detected-role-pill">{role} detected</span>}
+            <button data-testid="send-otp-button" className="button primary wide" onClick={send}>Continue <ChevronRight size={17} /></button>
+            <div className="or-line"><span>or</span></div>
+            <button data-testid="google-sign-in-button" className="button google wide" onClick={google}>Continue with Google</button>
+            <p className="tiny center">No password. We'll send a one-time code.</p>
+          </div>}
+          {step === 'otp' && <div className="ob-step" data-testid="onboarding-otp">
+            <p className="eyebrow">EMAIL VERIFICATION</p><h2>Enter your code</h2><p className="muted">We sent a 6-digit OTP to <b>{email}</b>.</p>
+            <div className="otp-row">{otp.map((d, i) => <input key={i} data-testid={`otp-box-${i}`} ref={el => boxes.current[i] = el} inputMode="numeric" maxLength="1" value={d} onChange={e => setDigit(i, e.target.value)} onKeyDown={e => onKey(i, e)} />)}</div>
+            <p className="demo-note" data-testid="demo-otp-note"><Sparkles size={14} /> Demo code: <b>123456</b></p>
+            <button data-testid="verify-otp-button" className="button primary wide" onClick={verify}>Verify email <Check size={17} /></button>
+            <button data-testid="change-email-button" className="button secondary wide" onClick={() => { setStep('welcome'); setError(''); }}>Change email</button>
+          </div>}
+          {error && <p className="error" data-testid="auth-error"><X size={14} />{error}</p>}
+        </section>
+      </div>
+    </main>
+  );
+}
 
-function Shell({page,setPage,children,user,unread,onRequest}){return <div className="app-shell"><aside><div className="logo"><span>↻</span> loop</div><p className="campus-label">NIT AP · 01</p><nav>{nav.map(([id,label,Icon])=><button data-testid={`nav-${id}`} className={page===id?'active':''} onClick={()=>setPage(id)} key={id}><Icon size={18}/>{label}{id==='requests'&&<i>2</i>}</button>)}</nav><div className="sidebar-bottom"><div className="mini-profile"><Avatar name={user.name} small/><span><b>{user.name}</b><small>{user.student_verified?'Student verified':'Verification pending'}</small></span></div><button data-testid="sidebar-notifications-button" className="icon-button" onClick={()=>onRequest('notifications')}><Bell size={18}/>{unread&&<i className="dot"/>}</button></div></aside><main className="content"><header><div className="mobile-brand">↻ <span>loop</span></div><button data-testid="header-notifications-button" className="notification-button" onClick={()=>onRequest('notifications')}><Bell size={19}/>{unread&&<i className="dot"/>}</button></header>{children}</main><div className="mobile-nav">{nav.map(([id,label,Icon])=><button data-testid={`mobile-nav-${id}`} className={page===id?'active':''} onClick={()=>setPage(id)} key={id}><Icon size={19}/><span>{label}</span></button>)}</div></div>}
+function AuthCallback({ onDone, onError }) {
+  const location = useLocation(); const navigate = useNavigate(); const processed = useRef(false);
+  useEffect(() => {
+    if (processed.current) return; processed.current = true;
+    const sessionId = new URLSearchParams(location.hash.replace(/^#/, '')).get('session_id');
+    if (!sessionId) { onError('Google sign-in did not return a valid session.'); navigate('/', { replace: true }); return; }
+    client.post('/auth/google/session', { session_id: sessionId }).then(r => { onDone(r.data.user, r.data.token); navigate('/', { replace: true }); }).catch(e => { onError(e.response?.data?.detail || 'Google sign-in could not be completed.'); navigate('/', { replace: true }); });
+  }, [location.hash, navigate, onDone, onError]);
+  return <div className="auth-callback" data-testid="google-auth-callback" role="status">Signing you into Loop…</div>;
+}
 
-function SearchBox({value,setValue,onSearch}){return <div className="search-wrap"><Search size={20}/><input data-testid="marketplace-search-input" value={value} onChange={e=>setValue(e.target.value)} onKeyDown={e=>e.key==='Enter'&&onSearch()} placeholder="What do you need? Try ‘PPT design’ or ‘Drafter’"/><kbd>⌘ K</kbd></div>}
-function HomePage({user,providers,resources,onSearch,setPage}){const [q,setQ]=useState('');return <><section className="home-hero"><div><p className="eyebrow accent">GOOD AFTERNOON, {user.name.split(' ')[0].toUpperCase()}</p><h1>What do you <em>need?</em></h1><p className="hero-sub">Someone on campus already can help.</p><SearchBox value={q} setValue={setQ} onSearch={()=>onSearch(q)}/><div className="quick-searches"><span>Popular now</span>{['Engineering Mechanics PPT','Laptop repair','Drafter'].map(x=><button data-testid={`quick-search-${x.toLowerCase().replaceAll(' ','-')}`} key={x} onClick={()=>{setQ(x);onSearch(x)}}>{x}</button>)}</div></div><div className="hero-stat"><span className="live-dot"></span><small>LIVE ON CAMPUS</small><strong>184</strong><span>students helping each other</span></div></section><section className="section-block"><div className="section-heading"><div><p className="eyebrow">CURATED FOR YOU</p><h2>Popular on campus</h2></div><button data-testid="home-explore-link" className="text-button" onClick={()=>setPage('explore')}>View all <ChevronRight size={16}/></button></div><div className="card-grid">{providers.slice(0,2).map(p=><ProviderCard key={p.id} provider={p} onClick={()=>onSearch('Engineering Mechanics PPT')}/>)}</div></section><section className="section-block lower-grid"><div><div className="section-heading"><div><p className="eyebrow">BORROW, DON’T BUY</p><h2>Useful nearby</h2></div></div><div className="resource-strip">{resources.slice(0,2).map(r=><ResourceCard key={r.id} resource={r}/>)}</div></div><div className="request-banner"><div className="banner-icon"><Plus/></div><p className="eyebrow">CAN’T FIND IT?</p><h2>Post a request.<br/>Let campus come to you.</h2><button data-testid="home-post-request-button" className="button light" onClick={()=>setPage('requests')}>Post a request <ChevronRight size={17}/></button></div></section></>}
-function ProviderCard({provider,onClick,selectable=false}){return <button data-testid={`provider-card-${provider.id}`} className="provider-card" onClick={onClick}><div className="provider-top"><Avatar name={provider.name}/><span className="match-score">{provider.match}% <small>match</small></span></div><div className="provider-info"><h3>{provider.name}</h3><p>{provider.skill}</p><div className="provider-meta"><span><Star size={14} fill="currentColor"/> {provider.rating}</span><span>{provider.gigs} gigs</span><span>{money(provider.price)}</span></div></div><div className="why"><ShieldCheck size={15}/><span>{provider.why}</span></div></button>}
-function ResourceCard({resource,onClick}){return <button data-testid={`resource-card-${resource.id}`} className="resource-card" onClick={onClick}><div className="resource-emoji">{resource.emoji}</div><div><h3>{resource.name}</h3><p>{money(resource.price)} / day · {resource.condition}</p><small>{resource.location}</small></div><ChevronRight size={17}/></button>}
+/* ---------------- Onboarding continuation (profile → ID → personalize) ---------------- */
+const BRANCHES = ['Civil Engineering', 'Computer Science & Engineering', 'Electronics & Communication Engineering', 'Electrical & Electronics Engineering', 'Mechanical Engineering', 'Chemical Engineering', 'Metallurgical & Materials Engineering', 'Biotechnology', 'M.Tech'];
+const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+const CHOICES = [['need', 'I need things', 'Find students who can help me.'], ['skill', 'I have skills to offer', 'Turn what I know into gigs.'], ['resource', 'I have useful resources', 'Lend or rent things I rarely use.']];
 
-function Explore({providers,resources,onSearch,initialQuery,onSelectProvider,onSelectResource}){const [q,setQ]=useState(initialQuery||'');const [results,setResults]=useState({services:providers,resources});const search=async(term=q)=>{setQ(term);const r=await client.get('/search',{params:{q:term}});setResults(r.data)};useEffect(()=>{if(!initialQuery)return;let active=true;client.get('/search',{params:{q:initialQuery}}).then(r=>{if(active){setQ(initialQuery);setResults(r.data)}});return()=>{active=false}},[initialQuery]);return <section><div className="page-title"><p className="eyebrow accent">EXPLORE THE LOOP</p><h1>Find your <em>fit.</em></h1><p className="hero-sub">Search once. We’ll look across skills and resources.</p><SearchBox value={q} setValue={setQ} onSearch={()=>search()}/></div><div className="result-tabs"><span data-testid="services-results-tab" className="selected">Services <b>{results.services.length}</b></span><span data-testid="resources-results-tab">Resources <b>{results.resources.length}</b></span><span className="sort">Best match ▾</span></div><div className="results-layout"><div><p className="result-context" data-testid="search-result-context">{q?`Showing the best matches for “${q}”`:'Popular services'}</p>{results.services.length?results.services.map(p=><ProviderCard key={p.id} provider={p} onClick={()=>onSelectProvider(p)}/>):<EmptySearch onRequest={()=>onSearch('__request__')}/>}</div><div><p className="result-context">Physical resources · {results.resources.length}</p>{results.resources.map(r=><ResourceCard key={r.id} resource={r} onClick={()=>onSelectResource(r)}/>)}</div></div></section>}
-function EmptySearch({onRequest}){return <div className="empty-state"><div className="empty-icon">⌁</div><h2>Nobody currently offers this.</h2><p>Turn your search into a campus opportunity. Relevant providers will be notified.</p><button data-testid="post-request-empty-button" className="button primary" onClick={onRequest}>Post a request <Plus size={17}/></button></div>}
+function Onboarding({ user, onDone }) {
+  const faculty = user.role === 'faculty';
+  const [step, setStep] = useState('profile');
+  const [name, setName] = useState(user.name || '');
+  const [branch, setBranch] = useState(user.branch || BRANCHES[0]);
+  const [year, setYear] = useState(user.year || YEARS[2]);
+  const [idStatus, setIdStatus] = useState(user.verification_status || 'Pending');
+  const [choices, setChoices] = useState(new Set(user.personalization || []));
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef();
+  const stepIndex = { profile: 3, verify: 4, personalize: 5 }[step];
+  const saveProfile = async () => { setBusy(true); await client.put('/profile', { name, branch: faculty ? '' : branch, year: faculty ? '' : year }); setBusy(false); setStep(faculty ? 'personalize' : 'verify'); };
+  const upload = async e => { const f = e.target.files?.[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); setBusy(true); try { const r = await client.post('/verification/upload', fd); setIdStatus(r.data.status); } catch { setIdStatus('Upload failed'); } setBusy(false); };
+  const toggle = c => { const n = new Set(choices); n.has(c) ? n.delete(c) : n.add(c); setChoices(n); };
+  const all = () => setChoices(new Set(['need', 'skill', 'resource']));
+  const finish = async () => { if (choices.size === 0) return; setBusy(true); const r = await client.put('/profile/personalization', { choices: [...choices] }); onDone(r.data); };
+  return (
+    <main className="onboard-page">
+      <div className="onboard-shell">
+        <aside className="onboard-brand">
+          <div><div className="logo"><span>↻</span> loop</div><p className="kicker">NIT AP · PILOT</p><h1 className="brand-hero">Almost<br /><em>in the Loop.</em></h1><p className="brand-copy">A few details so campus can find you and you can find campus.</p></div>
+          <p className="tiny">Verification is a transaction gate, not an entrance gate. Explore freely while it is pending.</p>
+        </aside>
+        <section className="onboard-panel">
+          <div className="onboard-progress">{[1, 2, 3, 4, 5].map(i => <span key={i} className={i <= stepIndex ? 'on' : ''} />)}</div>
+          {step === 'profile' && <div className="ob-step" data-testid="onboarding-profile">
+            <p className="eyebrow">PROFILE</p><h2>Tell us about yourself</h2><p className="muted">Account type is detected from your institutional email.</p>
+            <label>Full name<input data-testid="profile-name-input" value={name} onChange={e => setName(e.target.value)} /></label>
+            <label>Account type<input data-testid="profile-role-input" value={faculty ? 'Faculty' : 'Student'} disabled /></label>
+            {!faculty && <><label>Branch / program<select data-testid="profile-branch-select" value={branch} onChange={e => setBranch(e.target.value)}>{BRANCHES.map(b => <option key={b}>{b}</option>)}</select></label>
+              <label>Year<select data-testid="profile-year-select" value={year} onChange={e => setYear(e.target.value)}>{YEARS.map(y => <option key={y}>{y}</option>)}</select></label></>}
+            <button data-testid="profile-continue-button" className="button primary wide" disabled={busy} onClick={saveProfile}>Continue <ChevronRight size={17} /></button>
+          </div>}
+          {step === 'verify' && <div className="ob-step" data-testid="onboarding-verify">
+            <p className="eyebrow">STUDENT VERIFICATION</p><h2>Verify your student identity</h2><p className="muted">Upload your college ID. You can explore Loop while verification is pending.</p>
+            <button type="button" className="upload-zone" data-testid="id-upload-zone" onClick={() => fileRef.current?.click()}><Upload size={26} /><b>Upload college ID card</b><span className="tiny">JPG, PNG or PDF</span></button>
+            <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden onChange={upload} data-testid="id-file-input" />
+            <div className="verify-status"><span>Verification status</span><Badge tone={idStatus === 'Under review' ? 'orange' : ''}>{busy ? 'Uploading…' : idStatus}</Badge></div>
+            <p className="tiny">Verification is a transaction gate, not an entrance gate.</p>
+            <button data-testid="verify-continue-button" className="button primary wide" disabled={busy} onClick={() => setStep('personalize')}>Continue <ChevronRight size={17} /></button>
+          </div>}
+          {step === 'personalize' && <div className="ob-step" data-testid="onboarding-personalize">
+            <p className="eyebrow">PERSONALIZE</p><h2>What brings you to Loop?</h2><p className="muted">Pick everything that applies.</p>
+            <div className="choice-grid">{CHOICES.map(([c, t, s]) => <button key={c} data-testid={`choice-${c}`} className={`choice ${choices.has(c) ? 'sel' : ''}`} onClick={() => toggle(c)}><b>{t}</b><span>{s}</span></button>)}
+              <button data-testid="choice-all" className={`choice full ${['need', 'skill', 'resource'].every(x => choices.has(x)) ? 'sel' : ''}`} onClick={all}><b>All three</b><span>Need things + offer skills + share resources.</span></button></div>
+            <button data-testid="enter-loop-button" className="button primary wide" disabled={busy || choices.size === 0} onClick={finish}>Enter Loop <ChevronRight size={17} /></button>
+          </div>}
+        </section>
+      </div>
+    </main>
+  );
+}
 
-function Requests({requests,onRequest}){const [show,setShow]=useState(false);const [items,setItems]=useState(requests);const [form,setForm]=useState({title:'',category:'Academic',deadline:'Tomorrow',budget:300,description:''});const create=async()=>{const response=await client.post('/requests',form);setItems(current=>[response.data,...current]);setShow(false);onRequest('request-created')};return <section><div className="page-title inline-title"><div><p className="eyebrow accent">YOUR DEMAND</p><h1>My <em>requests.</em></h1><p className="hero-sub">Search first. Ask campus when you need to.</p></div><button data-testid="create-request-button" className="button primary" onClick={()=>setShow(true)}><Plus size={17}/> Post a request</button></div><div className="request-list">{items.map(r=><div className="request-row" data-testid={`request-row-${r.id}`} key={r.id}><div className="request-icon"><FileText size={19}/></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline} · {r.notified} providers notified</p></div><Badge tone="green">{r.status}</Badge><ChevronRight size={17}/></div>)}</div>{show&&<div className="modal-backdrop"><div className="modal"><button data-testid="close-request-modal-button" className="close-button" onClick={()=>setShow(false)}><X/></button><p className="eyebrow accent">NEW DEMAND</p><h2>What do you need?</h2><label>Title<input data-testid="request-title-input" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Drone filming for club event"/></label><label>Budget<input data-testid="request-budget-input" type="number" value={form.budget} onChange={e=>setForm({...form,budget:e.target.value})}/></label><label>Deadline<select data-testid="request-deadline-select" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}><option>Tomorrow</option><option>This week</option><option>Next week</option></select></label><label>More detail<textarea data-testid="request-description-input" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Add context so the right person can find you."/></label><button data-testid="submit-request-button" className="button primary wide" onClick={create}>Notify matching providers <ChevronRight size={17}/></button></div></div>}</section>}
+/* ---------------- Shell ---------------- */
+function Shell({ page, setPage, children, user, onLogout, reqCount }) {
+  return <div className="app-shell">
+    <aside><div className="logo"><span>↻</span> loop</div><p className="campus-label">NIT AP · 01</p>
+      <nav>{nav.map(([id, label, Icon]) => <button data-testid={`nav-${id}`} className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}><Icon size={18} />{label}{id === 'requests' && reqCount > 0 && <i>{reqCount}</i>}</button>)}</nav>
+      <div className="sidebar-bottom">
+        <div className="mini-profile"><Avatar name={user.name} small /><span><b>{user.name}</b><small>{user.student_verified ? 'Verified' : user.role === 'faculty' ? 'Faculty' : 'Verification pending'}</small></span></div>
+        <button data-testid="logout-button" className="icon-button" onClick={onLogout}><LogOut size={17} /></button>
+      </div>
+    </aside>
+    <main className="content"><header><div className="mobile-brand">↻ <span>loop</span></div><button data-testid="mobile-logout-button" className="notification-button" onClick={onLogout}><LogOut size={18} /></button></header>{children}</main>
+    <div className="mobile-nav">{nav.map(([id, label, Icon]) => <button data-testid={`mobile-nav-${id}`} className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}><Icon size={19} /><span>{label}</span></button>)}</div>
+  </div>;
+}
 
-function ProviderDetail({provider,onBack,onHire}){return <section><button data-testid="provider-back-button" className="back-button" onClick={onBack}>← Back to results</button><div className="profile-hero"><Avatar name={provider.name}/><div><Badge tone="green">{provider.match}% match</Badge><h1>{provider.name}</h1><p>{provider.branch} · {provider.year} · NIT Andhra Pradesh</p><div className="trust-row"><Badge>Email Verified</Badge><Badge>Student Verified</Badge><Badge>Portfolio Verified</Badge></div></div></div><div className="detail-columns"><div><div className="detail-section"><p className="eyebrow">WHY LOOP RECOMMENDED THEM</p><div className="recommendation"><ShieldCheck/><p>{provider.why}</p></div></div><div className="detail-section"><p className="eyebrow">SKILLS & WORK</p><h2>{provider.skill}</h2><p className="muted">{provider.bio}</p><div className="portfolio-row"><div>MECHANICS<br/><b>Decks</b></div><div>VISUAL<br/><b>Systems</b></div><div>ACADEMIC<br/><b>Support</b></div></div></div><div className="detail-section"><p className="eyebrow">REPUTATION</p><div className="reputation"><strong><Star size={19} fill="currentColor"/> {provider.rating}</strong><span>{provider.gigs} gigs completed</span><span>{provider.similar} similar gigs</span></div></div></div><aside className="hire-panel"><p className="eyebrow accent">SOLVE YOUR PROBLEM</p><h2>Hire {provider.name.split(' ')[0]}.</h2><p>Available today · Typical turnaround 24h</p><div className="price-line"><span>One-time task</span><b>{money(provider.price)}</b></div><div className="secure-line"><LockKeyhole size={16}/> Payment secured until completion</div><button data-testid="hire-provider-button" className="button primary wide" onClick={onHire}>Send hire request <ChevronRight size={17}/></button><small>Contact details reveal after payment only.</small></aside></div></section>}
+function SearchBox({ value, setValue, onSearch }) { return <div className="search-wrap"><Search size={20} /><input data-testid="marketplace-search-input" value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Try 'LinkedIn photo', 'PPT', 'drafter', or 'laptop repair'" /><button data-testid="search-submit-button" className="button primary" onClick={onSearch}>Search</button></div> }
 
-function ResourceDetail({resource,onBack,onRent}){const [days,setDays]=useState(1);const total=resource.price*days+resource.deposit;return <section><button data-testid="resource-back-button" className="back-button" onClick={onBack}>← Back to resources</button><div className="resource-detail"><div className="resource-large">{resource.emoji}</div><p className="eyebrow accent">RESOURCE LISTING</p><h1>{resource.name}</h1><p className="hero-sub">Owned by {resource.owner} · <Star size={15} fill="currentColor"/> {resource.rating}</p><div className="resource-facts"><span><b>{money(resource.price)}</b><small>per day</small></span><span><b>{resource.condition}</b><small>condition</small></span><span><b>{resource.location}</b><small>pickup</small></span></div><div className="rent-box"><h2>Rent this resource</h2><label>Duration<select data-testid="rental-duration-select" value={days} onChange={e=>setDays(Number(e.target.value))}><option value="1">1 day</option><option value="2">2 days</option><option value="4">4 days</option></select></label><div className="breakdown"><span>{money(resource.price)} × {days} day{days>1?'s':''}<b>{money(resource.price*days)}</b></span>{resource.deposit>0&&<span>Refundable deposit<b>{money(resource.deposit)}</b></span>}<hr/><span>Total upfront<b>{money(total)}</b></span></div><button data-testid="rent-resource-button" className="button primary wide" onClick={()=>onRent(total)}>Pay via UPI · {money(total)} <WalletCards size={17}/></button><small>Deposit is refunded after the owner confirms return.</small></div></div></section>}
+function HomePage({ user, providers, resources, onSearch, setPage }) {
+  const [q, setQ] = useState('');
+  return <>
+    <section className="home-hero"><div>
+      <p className="eyebrow accent">SEARCH FIRST</p><h1>What do you <em>need?</em></h1><p className="hero-sub">Find a skill, service, or resource on campus.</p>
+      <SearchBox value={q} setValue={setQ} onSearch={() => onSearch(q)} />
+      <div className="quick-searches"><span>Popular</span>{['LinkedIn photo', 'Engineering Mechanics PPT', 'Laptop repair', 'Drafter'].map(x => <button data-testid={`quick-search-${x.toLowerCase().replaceAll(' ', '-')}`} key={x} onClick={() => { setQ(x); onSearch(x); }}>{x}</button>)}</div>
+    </div>
+      <div className="hero-stat"><span className="live-dot" /><small>LIVE ON CAMPUS</small><strong>1,284</strong><span>students helping each other</span></div>
+    </section>
+    <section className="section-block"><div className="section-heading"><div><p className="eyebrow">DEMAND SIGNALS</p><h2>Popular on campus</h2></div><button data-testid="home-explore-link" className="text-button" onClick={() => setPage('explore')}>View all <ChevronRight size={16} /></button></div>
+      <div className="popular-grid">
+        <div className="tile"><p className="eyebrow">SERVICE</p><h3>PPT Design</h3><p className="muted">42 requests this week · 14 providers</p></div>
+        <div className="tile"><p className="eyebrow">RESOURCE</p><h3>fx-991CW</h3><p className="muted">87 borrows this month · 6 available now</p></div>
+        <div className="tile"><p className="eyebrow">SERVICE</p><h3>Photography</h3><p className="muted">26 requests this week · LinkedIn + events</p></div>
+      </div>
+    </section>
+    <section className="section-block lower-grid">
+      <div><div className="section-heading"><div><p className="eyebrow">BORROW, DON'T BUY</p><h2>Useful nearby</h2></div></div>
+        <div className="resource-strip">{resources.slice(0, 2).map(r => <div className="resource-card" key={r.id} onClick={() => onSearch(r.name)}><div className="resource-emoji">{r.emoji}</div><div><h3>{r.name}</h3><p>{money(r.price)} / day · {r.condition}</p><small>{r.location}</small></div><ChevronRight size={17} /></div>)}</div></div>
+      <div className="request-banner"><div className="banner-icon"><Plus /></div><p className="eyebrow">SEARCH FIRST. ASK CAMPUS SECOND.</p><h2>Can't find it?<br />Post a request.</h2><button data-testid="home-post-request-button" className="button light" onClick={() => setPage('requests')}>Post a request <ChevronRight size={17} /></button></div>
+    </section>
+  </>;
+}
 
-function Insights(){const [data,setData]=useState(null);useEffect(()=>{client.get('/insights').then(r=>setData(r.data))},[]);return <section><div className="page-title"><p className="eyebrow accent">CAMPUS SIGNALS</p><h1>Insights that <em>move</em> Loop.</h1><p className="hero-sub">See where campus has demand — and where supply is missing.</p></div>{data&&<><div className="metric-grid">{data.metrics.map(m=><div className="metric" data-testid={`metric-${m.label.toLowerCase().replaceAll(' ','-')}`} key={m.label}><span>{m.label}</span><strong>{m.value}</strong></div>)}</div><div className="insight-grid"><div className="chart-panel"><div className="section-heading"><div><p className="eyebrow">THIS WEEK</p><h2>What campus needs</h2></div><Badge tone="orange">Demand rising</Badge></div>{data.demand.map(([label,value])=><div className="bar-row" key={label}><span>{label}</span><div><i style={{width:`${value*2}%`}}></i></div><b>{value}</b></div>)}</div><div className="supply-gap"><p className="eyebrow">OPPORTUNITY</p><h2>37 searched for drafters.</h2><p>Only 8 were available this week. That’s a supply gap worth closing.</p><button data-testid="insights-recruit-button" className="button light">I can help fill it <ChevronRight size={17}/></button></div></div></>}</section>}
+function ProviderCard({ provider, onClick }) {
+  return <button data-testid={`provider-card-${provider.id}`} className="provider-card" onClick={onClick}>
+    <div className="provider-top"><Avatar name={provider.name} /><span className="match-score">{provider.match ?? provider.base_match}% <small>match</small></span></div>
+    <div className="provider-info"><h3>{provider.name}</h3><p>{provider.skill}</p><div className="provider-meta"><span><Star size={14} fill="currentColor" /> {provider.rating}</span><span>{provider.gigs} gigs</span><span>{money(provider.price)}</span></div></div>
+    <div className="why"><ShieldCheck size={15} /><span>{provider.why}</span></div>
+  </button>;
+}
+function ResourceCard({ resource, onClick }) { return <button data-testid={`resource-card-${resource.id}`} className="resource-card" onClick={onClick}><div className="resource-emoji">{resource.emoji}</div><div><h3>{resource.name}</h3><p>{money(resource.price)} / day · {resource.condition}</p><small>{resource.owner} · ★{resource.rating}</small></div><ChevronRight size={17} /></button> }
 
-function Profile({user,onVerify}){return <section><div className="page-title"><p className="eyebrow accent">YOUR LOOP</p><h1>Hi, <em>{user.name.split(' ')[0]}.</em></h1><p className="hero-sub">Your reputation grows every time you show up.</p></div><div className="profile-card"><Avatar name={user.name}/><div><h2>{user.name}</h2><p>{user.branch} · {user.year}</p><div className="trust-row"><Badge>Email Verified</Badge><Badge tone={user.student_verified?'green':'orange'}>{user.student_verified?'Student Verified':'Student Verification Pending'}</Badge></div></div><button data-testid="profile-edit-button" className="icon-button"><Menu size={18}/></button></div><div className="verification-callout"><div><ShieldCheck/><div><h3>Student verification is pending</h3><p>Browse freely. Verification is only required before your first transaction.</p></div></div><button data-testid="upload-student-id-button" className="button secondary" onClick={onVerify}>Upload ID</button></div><div className="profile-stats"><div><strong>0</strong><span>Completed gigs</span></div><div><strong>—</strong><span>Your rating</span></div><div><strong>All three</strong><span>Your Loop mode</span></div></div></section>}
+function Explore({ initialQuery, onSelectProvider, onSelectResource, onPostRequest }) {
+  const [q, setQ] = useState(initialQuery || '');
+  const [results, setResults] = useState({ services: [], resources: [], no_match: false });
+  const [loading, setLoading] = useState(true);
+  const run = async (term = q) => { setQ(term); setLoading(true); const r = await client.get('/search', { params: { q: term } }); setResults(r.data); setLoading(false); };
+  useEffect(() => { run(initialQuery || ''); /* eslint-disable-next-line */ }, [initialQuery]);
+  return <section>
+    <div className="page-title"><p className="eyebrow accent">EXPLORE THE LOOP</p><h1>{q ? <>Results for <em>"{q}"</em></> : <>Find your <em>fit.</em></>}</h1><p className="hero-sub">Search once. We look across skills and resources.</p><SearchBox value={q} setValue={setQ} onSearch={() => run()} /></div>
+    <div className="result-tabs"><span data-testid="services-results-tab" className="selected">Services <b>{results.services.length}</b></span><span data-testid="resources-results-tab">Resources <b>{results.resources.length}</b></span><span className="sort">Best match ▾</span></div>
+    {results.no_match ? <EmptySearch onRequest={onPostRequest} /> :
+      <div className="results-layout">
+        <div><p className="result-context" data-testid="search-result-context">{q ? `Best matches for "${q}"` : 'Popular services'}</p>{results.services.map((p, i) => <ProviderCard key={p.id} provider={i === 0 && q ? { ...p } : p} onClick={() => onSelectProvider(p)} />)}</div>
+        <div><p className="result-context">Physical resources · {results.resources.length}</p>{results.resources.map(r => <ResourceCard key={r.id} resource={r} onClick={() => onSelectResource(r)} />)}</div>
+      </div>}
+    {!results.no_match && <div className="section banner-inline">Can't find the right person?<button data-testid="explore-post-request-button" className="button secondary" onClick={onPostRequest}>Post a request</button></div>}
+  </section>;
+}
+function EmptySearch({ onRequest }) { return <div className="empty-state" data-testid="no-match-empty-state"><div className="empty-icon">⌁</div><h2>Nobody currently offers this.</h2><p>Loop turns the missing need into a request. Providers with at least a 50% match get notified.</p><button data-testid="post-request-empty-button" className="button primary" onClick={onRequest}>Post a request <Plus size={17} /></button></div> }
 
-function App(){const location=useLocation();const [user,setUser]=useState(null);const [authChecking,setAuthChecking]=useState(true);const [authError,setAuthError]=useState('');const [page,setPage]=useState('home');const [data,setData]=useState({providers:[],resources:[],requests:[]});const [selected,setSelected]=useState(null);const [resource,setResource]=useState(null);const [toast,setToast]=useState('');const [query,setQuery]=useState('');const [unread,setUnread]=useState(true);const hasGoogleSession=location.hash?.includes('session_id=');useEffect(()=>{if(hasGoogleSession)return;let active=true;client.get('/auth/me').then(r=>{if(active)setUser(r.data)}).catch(()=>{if(active)setUser(null)}).finally(()=>{if(active)setAuthChecking(false)});return()=>{active=false}},[hasGoogleSession]);useEffect(()=>{if(user)client.get('/home').then(r=>setData(r.data))},[user]);const notify=(msg)=>{setToast(msg);setTimeout(()=>setToast(''),2800)};const finishAuth=(u,token)=>{if(token)client.defaults.headers.common.Authorization=`Bearer ${token}`;setAuthError('');setUser(u);setAuthChecking(false);notify('Welcome back to Loop')};const failGoogleAuth=message=>{setAuthError(message);setAuthChecking(false)};const search=(q)=>{if(q==='__request__'){setPage('requests');return}setQuery(q);setPage('explore')};if(hasGoogleSession)return <AuthCallback onDone={finishAuth} onError={failGoogleAuth}/>;if(authChecking)return <main className="auth-page"><div className="auth-status" data-testid="auth-session-loading" role="status">Opening your Loop…</div></main>;if(!user)return <Auth initialError={authError} onDone={finishAuth}/>;let content=page==='home'?<HomePage user={user} {...data} onSearch={search} setPage={setPage}/>:page==='explore'?(selected?<ProviderDetail provider={selected} onBack={()=>setSelected(null)} onHire={async()=>{await client.post('/payments',{item_id:selected.id,kind:'service',amount:selected.price});notify(`Payment secured · contact revealed for ${selected.name}`);setSelected(null);setPage('requests')}}/>:resource?<ResourceDetail resource={resource} onBack={()=>setResource(null)} onRent={async total=>{await client.post('/payments',{item_id:resource.id,kind:'resource',amount:total,deposit:resource.deposit});notify('Payment secured · pickup contact revealed');setResource(null)}}/>:<Explore providers={data.providers} resources={data.resources} initialQuery={query} onSearch={search} onSelectProvider={setSelected} onSelectResource={r=>setResource(r)}/>):page==='requests'?<Requests requests={data.requests} onRequest={msg=>notify(msg==='request-created'?'Request posted · 3 matching providers notified':'Done')}/>:page==='insights'?<Insights/>:<Profile user={user} onVerify={()=>notify('Upload flow ready · verification status remains Pending')}/>;return <Shell page={page} setPage={setPage} user={user} unread={unread} onRequest={type=>{setUnread(false);notify(type==='notifications'?'You have 2 relevant opportunities':'Done')}}>{content}{toast&&<div data-testid="loop-toast" className="loop-toast" role="status">{toast}</div>}</Shell>}
+function ProviderDetail({ provider, onBack, onHire }) {
+  return <section><button data-testid="provider-back-button" className="back-button" onClick={onBack}>← Back to results</button>
+    <div className="profile-hero"><Avatar name={provider.name} /><div><Badge tone="green">{provider.match ?? provider.base_match}% match</Badge><h1>{provider.name}</h1><p>{provider.branch} · {provider.year} · NIT Andhra Pradesh</p><div className="trust-row">{(provider.verified || []).map(v => <Badge key={v}>{v}</Badge>)}</div></div></div>
+    <div className="detail-columns"><div>
+      <div className="detail-section"><p className="eyebrow">WHY LOOP RECOMMENDED THEM</p><div className="recommendation"><ShieldCheck /><p>{provider.why}</p></div></div>
+      <div className="detail-section"><p className="eyebrow">SKILLS & WORK</p><h2>{provider.skill}</h2><p className="muted">{provider.bio}</p></div>
+      <div className="detail-section"><p className="eyebrow">REPUTATION</p><div className="reputation"><strong><Star size={19} fill="currentColor" /> {provider.rating}</strong><span>{provider.gigs} gigs completed</span><span>{provider.similar} similar gigs</span></div></div>
+    </div>
+      <aside className="hire-panel"><p className="eyebrow accent">SOLVE YOUR PROBLEM</p><h2>Hire {provider.name.split(' ')[0]}.</h2><p>{provider.availability} · UPI held until completion</p><div className="price-line"><span>One-time task</span><b>{money(provider.price)}</b></div><div className="secure-line"><LockKeyhole size={16} /> Provider accepts first · then you pay</div><button data-testid="hire-provider-button" className="button primary wide" onClick={onHire}>Send hire request <ChevronRight size={17} /></button><small>Contact details reveal only after payment.</small></aside>
+    </div>
+  </section>;
+}
+
+function ResourceDetail({ resource, onBack, onRent }) {
+  const [days, setDays] = useState(1); const total = resource.price * days + resource.deposit;
+  return <section><button data-testid="resource-back-button" className="back-button" onClick={onBack}>← Back to resources</button>
+    <div className="resource-detail"><div className="resource-large">{resource.emoji}</div><p className="eyebrow accent">RESOURCE LISTING</p><h1>{resource.name}</h1><p className="hero-sub">Owned by {resource.owner} · <Star size={15} fill="currentColor" /> {resource.rating}</p>
+      <div className="resource-facts"><span><b>{money(resource.price)}</b><small>per day</small></span><span><b>{resource.condition}</b><small>condition</small></span><span><b>{resource.location}</b><small>pickup</small></span></div>
+      <div className="rent-box"><h2>Rent this resource</h2><label>Duration<select data-testid="rental-duration-select" value={days} onChange={e => setDays(Number(e.target.value))}><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="4">4 days</option></select></label>
+        <div className="breakdown"><span>{money(resource.price)} × {days} day{days > 1 ? 's' : ''}<b>{money(resource.price * days)}</b></span>{resource.deposit > 0 && <span>Refundable deposit<b>{money(resource.deposit)}</b></span>}<hr /><span>Total upfront<b>{money(total)}</b></span></div>
+        <button data-testid="rent-resource-button" className="button primary wide" onClick={() => onRent(days)}>Reserve · owner accepts first <WalletCards size={17} /></button><small>Deposit is refunded after the owner confirms return.</small></div>
+    </div>
+  </section>;
+}
+
+/* ---------------- Transaction card + modal ---------------- */
+function TransactionCard({ tx, onAction, onReview }) {
+  const actions = nextActions(tx);
+  return <div className="tx-card" data-testid={`transaction-${tx.id}`}>
+    <div className="tx-head"><div><span className="eyebrow">{tx.kind === 'service' ? 'HIRE' : 'RENTAL'}</span><h3>{tx.title}</h3><p className="muted">{money(tx.amount)}{tx.deposit ? ` + ${money(tx.deposit)} deposit` : ''}</p></div><Badge tone={tx.status === 'COMPLETED' ? 'green' : 'orange'}>{STATUS_LABEL[tx.status] || tx.status}</Badge></div>
+    {tx.contact_revealed && tx.contacts && <div className="tx-contacts" data-testid={`tx-contacts-${tx.id}`}><LockKeyhole size={14} /> Contact revealed: {tx.kind === 'service' ? tx.contacts.provider : `${tx.contacts.provider} · pickup ${tx.contacts.pickup || ''}`}</div>}
+    {tx.deposit_refunded && <div className="tx-contacts" data-testid={`tx-refund-${tx.id}`}><Check size={14} /> Deposit of {money(tx.deposit)} refunded.</div>}
+    <div className="tx-actions">
+      {actions.map(([a, label, cls]) => <button key={a} data-testid={`tx-action-${tx.id}-${a}`} className={`button ${cls}`} onClick={() => onAction(tx, a)}>{label}</button>)}
+      {tx.status === 'COMPLETED' && !tx.reviewed && <button data-testid={`tx-review-${tx.id}`} className="button secondary" onClick={() => onReview(tx)}><Star size={15} /> Leave review</button>}
+      {tx.reviewed && <span className="tiny">✓ Reviewed</span>}
+    </div>
+  </div>;
+}
+
+function ReviewModal({ tx, onClose, onSubmit }) {
+  const [rating, setRating] = useState(5); const [text, setText] = useState('');
+  return <div className="modal-backdrop"><div className="modal"><button data-testid="close-review-modal" className="close-button" onClick={onClose}><X /></button>
+    <p className="eyebrow accent">REVIEW</p><h2>How was {tx.counterparty_name}?</h2>
+    <div className="star-row" data-testid="review-stars">{[1, 2, 3, 4, 5].map(n => <button key={n} data-testid={`review-star-${n}`} className={n <= rating ? 'on' : ''} onClick={() => setRating(n)}><Star size={26} fill={n <= rating ? 'currentColor' : 'none'} /></button>)}</div>
+    <label>Notes<textarea data-testid="review-text-input" value={text} onChange={e => setText(e.target.value)} placeholder="Only completed transactions create reviews." /></label>
+    <button data-testid="submit-review-button" className="button primary wide" onClick={() => onSubmit(rating, text)}>Submit review <Check size={17} /></button>
+  </div></div>;
+}
+
+/* ---------------- Requests (create + FCFS + activity) ---------------- */
+function Requests({ user, notify, refreshHome, onOpenTx, onReview }) {
+  const [tab, setTab] = useState('mine');
+  const [mine, setMine] = useState([]); const [campus, setCampus] = useState([]); const [txs, setTxs] = useState([]);
+  const [show, setShow] = useState(false); const [mode, setMode] = useState('one');
+  const [form, setForm] = useState({ title: '', category: 'Presentation', deadline: '', budget: 500, description: '', frequency: 'Weekly' });
+  const load = async () => { const [r, t] = await Promise.all([client.get('/requests'), client.get('/transactions')]); setMine(r.data.mine); setCampus(r.data.campus); setTxs(t.data); };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  const create = async () => { if (!form.title.trim()) { notify('Add what you need first.'); return; } try { await client.post('/requests', { ...form, recurring: mode === 'recurring', budget: Number(form.budget) || 0 }); setShow(false); setForm({ ...form, title: '', description: '' }); notify('Request posted. Matching providers notified.'); load(); } catch (e) { notify(e.response?.data?.detail || 'Could not post'); } };
+  const apply = async id => { try { const r = await client.post(`/requests/${id}/apply`); notify(`Applied · position #${r.data.position}`); load(); } catch (e) { notify(e.response?.data?.detail || 'Could not apply'); } };
+  const select = async (reqId, appId) => { try { await client.post(`/requests/${reqId}/select/${appId}`); notify('Provider selected · hire started'); load(); refreshHome(); } catch (e) { notify(e.response?.data?.detail || 'Could not select'); } };
+  const doAction = async (tx, action) => { try { const r = await client.post(`/transactions/${tx.id}/action`, { action }); notify(action === 'pay' ? 'Payment secured · contact revealed' : STATUS_LABEL[r.data.status] || 'Updated'); load(); refreshHome(); } catch (e) { notify(e.response?.data?.detail || 'Action failed'); } };
+  return <section>
+    <div className="page-title inline-title"><div><p className="eyebrow accent">YOUR DEMAND</p><h1>Requests & <em>activity.</em></h1><p className="hero-sub">Search first. Ask campus when you need to.</p></div><button data-testid="create-request-button" className="button primary" onClick={() => setShow(true)}><Plus size={17} /> Post a request</button></div>
+    <div className="result-tabs"><span data-testid="tab-mine" className={tab === 'mine' ? 'selected' : ''} onClick={() => setTab('mine')}>My requests <b>{mine.length}</b></span><span data-testid="tab-campus" className={tab === 'campus' ? 'selected' : ''} onClick={() => setTab('campus')}>Campus <b>{campus.length}</b></span><span data-testid="tab-activity" className={tab === 'activity' ? 'selected' : ''} onClick={() => setTab('activity')}>Activity <b>{txs.length}</b></span></div>
+
+    {tab === 'mine' && <div className="request-list">{mine.length === 0 ? <p className="muted empty-line">No requests yet. Post one when search comes up short.</p> : mine.map(r => <div className="request-row col" data-testid={`request-row-${r.id}`} key={r.id}>
+      <div className="request-row-top"><div className="request-icon"><FileText size={19} /></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline || 'flexible'} · {r.notified} providers notified</p></div><Badge tone={r.status === 'matched' ? 'green' : 'orange'}>{r.status}</Badge></div>
+      {r.applications?.length > 0 && r.status === 'open' && <div className="applicants"><p className="eyebrow">APPLICANTS · FCFS ORDER</p>{r.applications.map(a => <div className="applicant-row" key={a.id} data-testid={`applicant-${a.id}`}><span>#{a.order} {a.provider_name} · {a.match}% match</span><button data-testid={`select-applicant-${a.id}`} className="button primary" onClick={() => select(r.id, a.id)}>Select</button></div>)}</div>}
+      {r.status === 'matched' && <p className="tiny">✓ Provider selected — see Activity to complete the transaction.</p>}
+    </div>)}</div>}
+
+    {tab === 'campus' && <div className="request-list">{campus.map(r => <div className="request-row" data-testid={`campus-request-${r.id}`} key={r.id}><div className="request-icon"><FileText size={19} /></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline} · {r.needer_name} · {r.applications?.length || 0} applied</p></div>{r.status === 'open' ? <button data-testid={`apply-request-${r.id}`} className="button primary" onClick={() => apply(r.id)}>Apply (FCFS)</button> : <Badge tone="green">matched</Badge>}</div>)}</div>}
+
+    {tab === 'activity' && <div className="request-list">{txs.length === 0 ? <p className="muted empty-line">No transactions yet. Hire a provider or rent a resource to start.</p> : txs.map(tx => <TransactionCard key={tx.id} tx={tx} onAction={doAction} onReview={onReview} />)}</div>}
+
+    {show && <div className="modal-backdrop"><div className="modal"><button data-testid="close-request-modal-button" className="close-button" onClick={() => setShow(false)}><X /></button>
+      <p className="eyebrow accent">NEW DEMAND</p><h2>What do you need?</h2>
+      <div className="choice-grid two"><button data-testid="req-mode-one" className={`choice ${mode === 'one' ? 'sel' : ''}`} onClick={() => setMode('one')}><b>One-time task</b><span>Solve one problem, then you're done.</span></button><button data-testid="req-mode-recurring" className={`choice ${mode === 'recurring' ? 'sel' : ''}`} onClick={() => setMode('recurring')}><b>Recurring</b><span>Need the same help repeatedly.</span></button></div>
+      <label>What do you need?<input data-testid="request-title-input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Drone photography for department event" /></label>
+      <label>Category<select data-testid="request-category-select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{['Presentation', 'Photography / Video', 'Tech Help', 'Academics', 'Design', 'Physical Resource'].map(c => <option key={c}>{c}</option>)}</select></label>
+      <div className="two-col"><label>Deadline<input data-testid="request-deadline-input" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} placeholder="Due Friday" /></label><label>Budget<input data-testid="request-budget-input" type="number" value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })} /></label></div>
+      {mode === 'recurring' && <label>Frequency<select data-testid="request-frequency-select" value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>{['Weekly', 'Monthly', 'Custom'].map(f => <option key={f}>{f}</option>)}</select></label>}
+      <label>Details<textarea data-testid="request-description-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe the task, deadline, quantity or constraints." /></label>
+      <button data-testid="submit-request-button" className="button primary wide" onClick={create}>Post request <ChevronRight size={17} /></button>
+    </div></div>}
+  </section>;
+}
+
+function Insights() {
+  const [data, setData] = useState(null);
+  useEffect(() => { client.get('/insights').then(r => setData(r.data)); }, []);
+  return <section><div className="page-title"><p className="eyebrow accent">CAMPUS INSIGHTS</p><h1>What is happening <em>on campus?</em></h1><p className="hero-sub">Marketplace activity translated into decisions.</p></div>
+    {data && <><div className="metric-grid">{data.metrics.map(m => <div className="metric" data-testid={`metric-${m.label.toLowerCase().replaceAll(' ', '-')}`} key={m.label}><span>{m.label}</span><strong>{m.value}</strong></div>)}</div>
+      <div className="banner-inline full">Resource marketplace gets them in. Skill marketplace keeps them there.</div>
+      <div className="insight-grid"><div className="chart-panel"><div className="section-heading"><div><p className="eyebrow">THIS WEEK</p><h2>Popular services</h2></div><Badge tone="orange">Demand rising</Badge></div>{data.demand.map(([label, value]) => <div className="bar-row" key={label}><span>{label}</span><div><i style={{ width: `${value * 2}%` }} /></div><b>{value}</b></div>)}</div>
+        <div className="supply-gap"><p className="eyebrow">UNDER-SUPPLIED</p><h2>Supply gaps worth closing.</h2>{data.undersupplied.map(([t, s]) => <div className="gap-row" key={t}><b>{t}</b><span>{s}</span></div>)}</div></div>
+    </>}
+  </section>;
+}
+
+function Profile({ user, onVerify, onUploaded }) {
+  const fileRef = useRef(); const [busy, setBusy] = useState(false);
+  const upload = async e => { const f = e.target.files?.[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); setBusy(true); try { await client.post('/verification/upload', fd); onUploaded('Under review'); } catch { onUploaded('Pending'); } setBusy(false); };
+  const verified = user.student_verified; const faculty = user.role === 'faculty';
+  return <section><div className="page-title"><p className="eyebrow accent">YOUR LOOP</p><h1>Hi, <em>{user.name.split(' ')[0]}.</em></h1><p className="hero-sub">Your reputation grows every time you show up.</p></div>
+    <div className="profile-card"><Avatar name={user.name} /><div><h2>{user.name}</h2><p>{faculty ? 'Faculty' : `${user.branch || '—'} · ${user.year || ''}`} · NIT Andhra Pradesh</p><div className="trust-row"><Badge>Email Verified</Badge>{!faculty && <Badge tone={verified ? 'green' : 'orange'}>{verified ? 'Student Verified' : `Student ${user.verification_status}`}</Badge>}{(user.personalization || []).length === 3 && <Badge>All three</Badge>}</div></div></div>
+    {!faculty && !verified && <div className="verification-callout"><div><ShieldCheck /><div><h3>Student verification: {user.verification_status}</h3><p>Browse freely. Verification is required before your first transaction.</p></div></div>
+      <div className="callout-actions"><input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden onChange={upload} data-testid="profile-id-file-input" /><button data-testid="upload-student-id-button" className="button secondary" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? 'Uploading…' : 'Upload ID'}</button><button data-testid="approve-verification-button" className="button primary" onClick={onVerify}>Approve (demo)</button></div></div>}
+    <div className="tile trust-tile"><p className="eyebrow">TRUST AT A GLANCE</p><div className="trust">{[['Identity', 'Institutional email verified'], ['Capability', 'Portfolio verified'], ['Reputation', `${user.reputation?.rating || 0}★ reviews`], ['Track record', `${user.reputation?.gigs_completed || 0} gigs`]].map(([t, s]) => <div className="tile" key={t}><strong>{t}</strong><p className="muted">{s}</p></div>)}</div></div>
+    <div className="profile-stats"><div><strong>{user.reputation?.gigs_completed || 0}</strong><span>Completed gigs</span></div><div><strong>{user.reputation?.rating || '—'}</strong><span>Your rating</span></div><div><strong>{(user.personalization || []).length === 3 ? 'All three' : (user.personalization || []).join(', ') || '—'}</strong><span>Your Loop mode</span></div></div>
+  </section>;
+}
+
+/* ---------------- App ---------------- */
+function App() {
+  const location = useLocation();
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authError, setAuthError] = useState('');
+  const [page, setPage] = useState('home');
+  const [data, setData] = useState({ providers: [], resources: [], requests: [], transactions: [] });
+  const [selected, setSelected] = useState(null); const [resource, setResource] = useState(null);
+  const [reviewTx, setReviewTx] = useState(null);
+  const [toast, setToast] = useState(''); const [query, setQuery] = useState('');
+  const hasGoogleSession = location.hash?.includes('session_id=');
+
+  useEffect(() => { if (hasGoogleSession) return; let active = true; client.get('/auth/me').then(r => active && setUser(r.data)).catch(() => active && setUser(null)).finally(() => active && setAuthChecking(false)); return () => { active = false; }; }, [hasGoogleSession]);
+  const loadHome = () => { client.get('/home').then(r => setData(r.data)); };
+  useEffect(() => { if (user?.onboarded) loadHome(); }, [user]);
+
+  const notify = msg => { setToast(msg); setTimeout(() => setToast(''), 2800); };
+  const finishAuth = (u, token) => { if (token) client.defaults.headers.common.Authorization = `Bearer ${token}`; setAuthError(''); setUser(u); setAuthChecking(false); };
+  const failGoogleAuth = m => { setAuthError(m); setAuthChecking(false); };
+  const search = q => { setQuery(q || ''); setSelected(null); setResource(null); setPage('explore'); };
+  const logout = async () => { await client.post('/auth/logout').catch(() => { }); delete client.defaults.headers.common.Authorization; setUser(null); setPage('home'); };
+  const refreshUser = () => client.get('/auth/me').then(r => setUser(r.data));
+
+  const hire = async p => { try { await client.post('/transactions/hire', { provider_id: p.id, amount: p.price }); notify(`Hire request sent to ${p.name}`); setSelected(null); loadHome(); setPage('requests'); } catch (e) { notify(e.response?.data?.detail || 'Could not hire'); } };
+  const rent = async (r, days) => { try { await client.post('/transactions/rent', { resource_id: r.id, days }); notify(`Reservation created for ${r.name}`); setResource(null); loadHome(); setPage('requests'); } catch (e) { notify(e.response?.data?.detail || 'Could not reserve'); } };
+  const submitReview = async (rating, text) => { try { await client.post('/reviews', { transaction_id: reviewTx.id, rating, text }); notify('Review saved · reputation updated'); } catch (e) { notify(e.response?.data?.detail || 'Could not review'); } setReviewTx(null); loadHome(); };
+
+  if (hasGoogleSession) return <AuthCallback onDone={finishAuth} onError={failGoogleAuth} />;
+  if (authChecking) return <main className="onboard-page"><div className="auth-status" data-testid="auth-session-loading" role="status">Opening your Loop…</div></main>;
+  if (!user) return <Auth initialError={authError} onDone={finishAuth} />;
+  if (!user.onboarded) return <Onboarding user={user} onDone={u => { setUser(u); notify(`Welcome to Loop, ${u.name}.`); }} />;
+
+  const openReqCount = data.requests.filter(r => r.status === 'open').length;
+  let content;
+  if (page === 'home') content = <HomePage user={user} providers={data.providers} resources={data.resources} onSearch={search} setPage={setPage} />;
+  else if (page === 'explore') content = selected ? <ProviderDetail provider={selected} onBack={() => setSelected(null)} onHire={() => hire(selected)} /> : resource ? <ResourceDetail resource={resource} onBack={() => setResource(null)} onRent={days => rent(resource, days)} /> : <Explore initialQuery={query} onSelectProvider={setSelected} onSelectResource={setResource} onPostRequest={() => setPage('requests')} />;
+  else if (page === 'requests') content = <Requests user={user} notify={notify} refreshHome={loadHome} onReview={setReviewTx} />;
+  else if (page === 'insights') content = <Insights />;
+  else content = <Profile user={user} onVerify={async () => { await client.post('/verification/approve'); await refreshUser(); notify('Student verification approved · you can transact now'); }} onUploaded={s => { refreshUser(); notify(`ID uploaded · status ${s}`); }} />;
+
+  return <Shell page={page} setPage={p => { setSelected(null); setResource(null); setPage(p); }} user={user} onLogout={logout} reqCount={openReqCount}>
+    {content}
+    {reviewTx && <ReviewModal tx={reviewTx} onClose={() => setReviewTx(null)} onSubmit={submitReview} />}
+    {toast && <div data-testid="loop-toast" className="loop-toast" role="status">{toast}</div>}
+  </Shell>;
+}
 export default App;
