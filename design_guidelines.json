@@ -1,0 +1,33 @@
+{
+  "typography": {
+    "heading_font": "Plus Jakarta Sans, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "mono_font": "JetBrains Mono, monospace"
+  },
+  "colors": {
+    "primary": "#4F46E5",
+    "primary_hover": "#4338CA",
+    "background_dark": "#0B0F19",
+    "surface_dark": "#111827",
+    "border_dark": "#1F2937",
+    "accent_orange": "#F97316",
+    "accent_emerald": "#10B981"
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-slate-900/80 border border-slate-800",
+    "tracing_beam": "relative overflow-hidden before:absolute before:inset-0 before:p-[1px] before:bg-gradient-to-r before:from-indigo-500 before:via-purple-500 before:to-pink-500 before:rounded-xl",
+    "noise_texture": true
+  },
+  "component_path": "/app/frontend/src/components",
+  "instructions_to_main_agent": "Build Loop with full support for NIT AP institutional email auth, mocked 6-digit OTP, student verification pending state, search-first marketplace, deterministic matching, request posting & provider applications, FCFS applicant list, simulated UPI payment, transaction state machine, contact reveal after payment, completion & reviews, resource rental with refundable deposit, insights dashboard, and adaptive five-area navigation.",
+  "universal_guidelines": [
+    "Every interactive element MUST include data-testid attributes",
+    "Use generous spacing (p-6, p-8, gap-6)",
+    "Respect dark mode palette with tinted greys",
+    "Include responsive five-area navigation"
+  ],
+  "image_urls": {
+    "campus_hero": "https://images.unsplash.com/photo-1680084521816-cc1ad0433ceb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHxjb2xsZWdlJTIwY2FtcHVzJTIwc3R1ZGVudHMlMjBpbmRpYSUyMHVuaXZlcnNpdHl8ZW58MHx8fHwxNzg3OTk2NjAwfDA&ixlib=rb-4.1.0&q=85",
+    "student_library": "https://images.unsplash.com/photo-1741699428220-65f37f3fbbcb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwxfHxzdHVkZW50JTIwc3R1ZHlpbmclMjBsYXB0b3AlMjBsaWJyYXJ5fGVufDB8fHx8MTc4Nzk5NjYwM3ww&ixlib=rb-4.1.0&q=85"
+  }
+}
