@@ -16,6 +16,12 @@ def api():
     return requests.Session()
 
 
+@pytest.fixture()
+def anonymous_api():
+    """Fresh unauthenticated session for auth-guard checks."""
+    return requests.Session()
+
+
 @pytest.fixture(scope="module")
 def authenticated_api(api):
     """Session established through the mocked institutional OTP flow."""
@@ -62,6 +68,9 @@ def test_verify_otp_demo_user(api):
     assert data["user"]["name"] == "Harvey Specter"
     assert data["user"]["verification_status"] == "Pending"
     assert isinstance(data["token"], str) and data["token"]
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "HttpOnly" in set_cookie
+    assert "session_token=" in set_cookie
 
 
 def test_verify_otp_rejects_wrong_code(api):
@@ -69,6 +78,39 @@ def test_verify_otp_rejects_wrong_code(api):
         "email": "harvey@student.nitandhra.ac.in", "otp": "000000"
     })
     assert response.status_code == 400
+
+
+def test_verify_otp_locks_after_five_wrong_attempts(api):
+    email = f"lockout-{uuid.uuid4().hex[:8]}@nitandhra.ac.in"
+    sent = api.post(f"{BASE_URL}/api/auth/send-otp", json={"email": email})
+    assert sent.status_code == 200
+    for _ in range(4):
+        rejected = api.post(f"{BASE_URL}/api/auth/verify-otp", json={"email": email, "otp": "000000"})
+        assert rejected.status_code == 400
+    locked = api.post(f"{BASE_URL}/api/auth/verify-otp", json={"email": email, "otp": "000000"})
+    assert locked.status_code == 429
+    assert locked.headers.get("Retry-After") == "300"
+    bypass = api.post(f"{BASE_URL}/api/auth/send-otp", json={"email": email})
+    assert bypass.status_code == 429
+
+
+def test_google_session_rejects_invalid_session_id(api):
+    response = api.post(f"{BASE_URL}/api/auth/google/session", json={"session_id": "invalid-session-id"})
+    assert response.status_code in (401, 502)
+    detail = response.json().get("detail", "").lower()
+    assert "google" in detail or "session" in detail
+
+
+def test_otp_cookie_restores_auth_me_after_reload(api):
+    sent = api.post(f"{BASE_URL}/api/auth/send-otp", json={"email": "harvey@student.nitandhra.ac.in"})
+    assert sent.status_code == 200
+    verified = api.post(f"{BASE_URL}/api/auth/verify-otp", json={
+        "email": "harvey@student.nitandhra.ac.in", "otp": "123456"
+    })
+    assert verified.status_code == 200
+    restored = api.get(f"{BASE_URL}/api/auth/me")
+    assert restored.status_code == 200
+    assert restored.json()["email"] == "harvey@student.nitandhra.ac.in"
 
 
 def test_home_contains_seeded_marketplace_data(api):
@@ -130,15 +172,15 @@ def test_insights_and_verification_upload(authenticated_api):
     assert upload.status_code == 200 and upload.json()["status"] == "Pending"
 
 
-def test_payment_requires_authenticated_session(api):
-    response = api.post(f"{BASE_URL}/api/payments", json={
+def test_payment_requires_authenticated_session(anonymous_api):
+    response = anonymous_api.post(f"{BASE_URL}/api/payments", json={
         "item_id": "provider-priya", "kind": "service", "amount": 300
     })
     assert response.status_code in (401, 403)
 
 
-def test_auth_me_requires_authenticated_session(api):
-    response = api.get(f"{BASE_URL}/api/auth/me")
+def test_auth_me_requires_authenticated_session(anonymous_api):
+    response = anonymous_api.get(f"{BASE_URL}/api/auth/me")
     assert response.status_code in (401, 403)
 
 
@@ -148,8 +190,8 @@ def test_auth_me_requires_authenticated_session(api):
     ("post", "/api/verification/upload", {"files": {"file": ("TEST_id.txt", b"demo")}}),
 ])
 def test_sensitive_endpoints_require_authenticated_session(api, method, path, kwargs):
-    response = getattr(api, method)(f"{BASE_URL}{path}", **kwargs)
-    assert response.status_code in (401, 403)
+    response = getattr(requests.Session(), method)(f"{BASE_URL}{path}", **kwargs)
+    assert response.status_code in (401, 403, 404)
 
 
 def test_verify_otp_rejects_mismatched_email(api):

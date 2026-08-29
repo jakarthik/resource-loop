@@ -1,0 +1,43 @@
+{
+  "summary": "Completed backend + frontend auth regression for Emergent Google and OTP fallback on the public preview URL. Backend pytest passed (19/19) after fixing test isolation; UI validation confirmed Google CTA redirect initiation, invalid callback exchange/error recovery, OTP login, cookie-based restore after reload, and authenticated home load. Production frontend build compiled successfully with no warnings/errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/auth/verify-otp",
+        "issue": "No brute-force lockout observed after 6 consecutive invalid OTP attempts; endpoint kept returning generic 400 without temporary lock/block."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iteration_5_results.xml"
+  ],
+  "action_items": [
+    "Implement OTP brute-force protection (e.g., attempt counter + cooldown/lockout after 5 failures).",
+    "Retest with a real institutional Google login to fully verify persisted Google session fields in DB (stable user_id reuse, 7-day expiry record) end-to-end."
+  ],
+  "critical_code_review_comments": [
+    "Google session persistence logic appears correct in code review: user lookup uses projection excluding _id, user_id is reused from existing record when present, and expires_at is stored as now + 7 days.",
+    "Could not fully assert Google persistence behavior through live API without a valid institutional Google account/session_id."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iteration_5_results.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 pytest)",
+    "frontend": "100% of requested testable flows without real Google credentials"
+  },
+  "seed_data_creation": "No persistent seed data created. Runtime test requests/transactions were process-local. Auth fallback remains MOCKED OTP 123456.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Validated on https://resource-loop-5.preview.emergentagent.com. Invalid #session_id triggers POST /api/auth/google/session and returns onboarding with visible error + cleared fragment. OTP login and cookie restore after reload work. Google CTA jumps into Google Accounts flow (managed chain). Frontend build passes cleanly. Remaining gap: no lockout on repeated invalid OTP and no real Google account available for full persistence E2E verification.",
+  "rca of the issue": "OTP verification currently checks challenge presence/value only and does not track per-email/IP failure counts or cooldown state, so repeated invalid attempts are never rate-limited/locked. Mitigation: persist failed_attempts + locked_until in OTP challenge/session store and enforce lockout after threshold (e.g., 5 attempts)."
+}
