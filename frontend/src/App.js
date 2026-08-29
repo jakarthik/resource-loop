@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { Bell, Check, ChevronRight, ClipboardList, Compass, FileText, Home, Lightbulb, LockKeyhole, LogOut, Package, Plus, Search, ShieldCheck, Sparkles, Star, Upload, UserRound, WalletCards, X } from "lucide-react";
+import { Ban, Check, ChevronRight, ClipboardList, Compass, FileText, Home, Lightbulb, LockKeyhole, LogOut, MapPin, MessageCircle, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, Star, Upload, UserRound, WalletCards, X, Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "@/App.css";
 
@@ -172,27 +172,29 @@ function Shell({ page, setPage, children, user, onLogout, reqCount }) {
 
 function SearchBox({ value, setValue, onSearch }) { return <div className="search-wrap"><Search size={20} /><input data-testid="marketplace-search-input" value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Try 'LinkedIn photo', 'PPT', 'drafter', or 'laptop repair'" /><button data-testid="search-submit-button" className="button primary" onClick={onSearch}>Search</button></div> }
 
-function HomePage({ user, providers, resources, onSearch, setPage }) {
-  const [q, setQ] = useState('');
+function HomePage({ user, resources, onSearch, setPage, onHire, notify, openMsg }) {
+  const [needResult, setNeedResult] = useState(null);
+  const [opps, setOpps] = useState([]); const [hasSignal, setHasSignal] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const loadDiscovery = () => { client.get('/opportunities').then(r => { setOpps(r.data.opportunities); setHasSignal(r.data.has_signal); }); client.get('/suggestions').then(r => setSuggestions(r.data.resources)); };
+  useEffect(() => { loadDiscovery(); /* eslint-disable-next-line */ }, []);
+  const offer = async opp => { try { await client.post(`/requests/${opp.id}/apply`); notify('Offer sent · first-come-first-served'); loadDiscovery(); } catch (e) { notify(e.response?.data?.detail || 'Could not offer'); } };
+  const noLoc = !(user.learned?.locations?.length);
   return <>
-    <section className="home-hero"><div>
-      <p className="eyebrow accent">SEARCH FIRST</p><h1>What do you <em>need?</em></h1><p className="hero-sub">Find a skill, service, or resource on campus.</p>
-      <SearchBox value={q} setValue={setQ} onSearch={() => onSearch(q)} />
-      <div className="quick-searches"><span>Popular</span>{['LinkedIn photo', 'Engineering Mechanics PPT', 'Laptop repair', 'Drafter'].map(x => <button data-testid={`quick-search-${x.toLowerCase().replaceAll(' ', '-')}`} key={x} onClick={() => { setQ(x); onSearch(x); }}>{x}</button>)}</div>
+    <section className="home-hero composer-hero"><div>
+      <p className="eyebrow accent">TWO WAYS TO LOOP</p><h1>Need it, or <em>provide it.</em></h1><p className="hero-sub">Describe it in one line. We infer the rest.</p>
+      <SmartComposer notify={notify} onNeedPosted={r => { setNeedResult(r); loadDiscovery(); }} onProvidePosted={r => { setNeedResult(null); loadDiscovery(); notify(`Listed · ${r.notified} matching need${r.notified === 1 ? '' : 's'}`); }} />
+      <button data-testid="home-search-everything" className="text-button" onClick={() => setPage('explore')}>or search everything on campus <ChevronRight size={15} /></button>
     </div>
       <div className="hero-stat"><span className="live-dot" /><small>LIVE ON CAMPUS</small><strong>1,284</strong><span>students helping each other</span></div>
     </section>
-    <section className="section-block"><div className="section-heading"><div><p className="eyebrow">DEMAND SIGNALS</p><h2>Popular on campus</h2></div><button data-testid="home-explore-link" className="text-button" onClick={() => setPage('explore')}>View all <ChevronRight size={16} /></button></div>
-      <div className="popular-grid">
-        <div className="tile"><p className="eyebrow">SERVICE</p><h3>PPT Design</h3><p className="muted">42 requests this week · 14 providers</p></div>
-        <div className="tile"><p className="eyebrow">RESOURCE</p><h3>fx-991CW</h3><p className="muted">87 borrows this month · 6 available now</p></div>
-        <div className="tile"><p className="eyebrow">SERVICE</p><h3>Photography</h3><p className="muted">26 requests this week · LinkedIn + events</p></div>
-      </div>
+    {(noLoc || opps.length > 0) && <div className="prompt-banner" data-testid="context-prompt">{opps.length > 0 ? <><Zap size={16} /><span>You have <b>{opps.length}</b> strong match{opps.length > 1 ? 'es' : ''} to provide.</span><button data-testid="prompt-view-matches" className="button light" onClick={() => document.getElementById('reverse-discovery')?.scrollIntoView({ behavior: 'smooth' })}>View matches</button></> : <><MapPin size={16} /><span>Add a location to improve your matches.</span></>}</div>}
+    {needResult && <MatchResults result={needResult} onHire={onHire} onSearch={onSearch} />}
+    <section className="section-block" id="reverse-discovery"><div className="section-heading"><div><p className="eyebrow">REVERSE DISCOVERY</p><h2>People who need what you provide</h2></div></div>
+      {opps.length > 0 ? <div className="match-grid">{opps.map(o => <OpportunityCard key={o.id} opp={o} onOffer={offer} onMessage={openMsg} />)}</div> : <p className="muted empty-line" data-testid="opportunities-empty">{hasSignal ? 'No open needs match your skills right now.' : 'Tell campus what you can provide (use "I Can Provide Something" above) to get matched to needs.'}</p>}
     </section>
-    <section className="section-block lower-grid">
-      <div><div className="section-heading"><div><p className="eyebrow">BORROW, DON'T BUY</p><h2>Useful nearby</h2></div></div>
-        <div className="resource-strip">{resources.slice(0, 2).map(r => <div className="resource-card" key={r.id} onClick={() => onSearch(r.name)}><div className="resource-emoji">{r.emoji}</div><div><h3>{r.name}</h3><p>{money(r.price)} / day · {r.condition}</p><small>{r.location}</small></div><ChevronRight size={17} /></div>)}</div></div>
-      <div className="request-banner"><div className="banner-icon"><Plus /></div><p className="eyebrow">SEARCH FIRST. ASK CAMPUS SECOND.</p><h2>Can't find it?<br />Post a request.</h2><button data-testid="home-post-request-button" className="button light" onClick={() => setPage('requests')}>Post a request <ChevronRight size={17} /></button></div>
+    <section className="section-block"><div className="section-heading"><div><p className="eyebrow">BORROW, DON'T BUY</p><h2>Resources you may need</h2></div><button className="text-button" data-testid="home-explore-link" onClick={() => setPage('explore')}>View all <ChevronRight size={16} /></button></div>
+      <div className="resource-strip">{(suggestions.length ? suggestions : resources).slice(0, 3).map(r => <div className="resource-card" key={r.id} data-testid={`suggested-resource-${r.id}`} onClick={() => onSearch(r.name)}><div className="resource-emoji">{r.emoji}</div><div><h3>{r.name}</h3><p>{money(r.price)} / day · {r.condition}</p><small>{r.location}</small></div><ChevronRight size={17} /></div>)}</div>
     </section>
   </>;
 }
@@ -250,8 +252,8 @@ function ResourceDetail({ resource, onBack, onRent }) {
   </section>;
 }
 
-/* ---------------- Transaction card + modal ---------------- */
-function TransactionCard({ tx, onAction, onReview }) {
+/* ---------------- Transaction card + messaging + composer ---------------- */
+function TransactionCard({ tx, onAction, onMessage, onQuickReview }) {
   const actions = nextActions(tx);
   return <div className="tx-card" data-testid={`transaction-${tx.id}`}>
     <div className="tx-head"><div><span className="eyebrow">{tx.kind === 'service' ? 'HIRE' : 'RENTAL'}</span><h3>{tx.title}</h3><p className="muted">{money(tx.amount)}{tx.deposit ? ` + ${money(tx.deposit)} deposit` : ''}</p></div><Badge tone={tx.status === 'COMPLETED' ? 'green' : 'orange'}>{STATUS_LABEL[tx.status] || tx.status}</Badge></div>
@@ -259,47 +261,102 @@ function TransactionCard({ tx, onAction, onReview }) {
     {tx.deposit_refunded && <div className="tx-contacts" data-testid={`tx-refund-${tx.id}`}><Check size={14} /> Deposit of {money(tx.deposit)} refunded.</div>}
     <div className="tx-actions">
       {actions.map(([a, label, cls]) => <button key={a} data-testid={`tx-action-${tx.id}-${a}`} className={`button ${cls}`} onClick={() => onAction(tx, a)}>{label}</button>)}
-      {tx.status === 'COMPLETED' && !tx.reviewed && <button data-testid={`tx-review-${tx.id}`} className="button secondary" onClick={() => onReview(tx)}><Star size={15} /> Leave review</button>}
+      <button data-testid={`tx-message-${tx.id}`} className="button ghost" onClick={() => onMessage(tx.id, tx.title)}><MessageCircle size={15} /> Message</button>
+      {tx.status === 'COMPLETED' && !tx.reviewed && <span className="inline-rate" data-testid={`tx-rate-${tx.id}`}>How did it go?{[1, 2, 3, 4, 5].map(n => <button key={n} data-testid={`tx-rate-${tx.id}-${n}`} onClick={() => onQuickReview(tx, n)}><Star size={17} /></button>)}</span>}
       {tx.reviewed && <span className="tiny">✓ Reviewed</span>}
     </div>
   </div>;
 }
 
-function ReviewModal({ tx, onClose, onSubmit }) {
-  const [rating, setRating] = useState(5); const [text, setText] = useState('');
-  return <div className="modal-backdrop"><div className="modal"><button data-testid="close-review-modal" className="close-button" onClick={onClose}><X /></button>
-    <p className="eyebrow accent">REVIEW</p><h2>How was {tx.counterparty_name}?</h2>
-    <div className="star-row" data-testid="review-stars">{[1, 2, 3, 4, 5].map(n => <button key={n} data-testid={`review-star-${n}`} className={n <= rating ? 'on' : ''} onClick={() => setRating(n)}><Star size={26} fill={n <= rating ? 'currentColor' : 'none'} /></button>)}</div>
-    <label>Notes<textarea data-testid="review-text-input" value={text} onChange={e => setText(e.target.value)} placeholder="Only completed transactions create reviews." /></label>
-    <button data-testid="submit-review-button" className="button primary wide" onClick={() => onSubmit(rating, text)}>Submit review <Check size={17} /></button>
+function MessageDrawer({ refId, title, me, onClose }) {
+  const [msgs, setMsgs] = useState([]); const [text, setText] = useState(''); const endRef = useRef();
+  const load = () => client.get(`/threads/${refId}`).then(r => setMsgs(r.data.messages));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [refId]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+  const send = async () => { if (!text.trim()) return; const r = await client.post(`/threads/${refId}`, { text }); setMsgs(r.data.messages); setText(''); };
+  return <div className="modal-backdrop" onClick={onClose}><div className="msg-drawer" onClick={e => e.stopPropagation()} data-testid="message-drawer">
+    <div className="msg-head"><div><p className="eyebrow accent">MESSAGES</p><h3>{title}</h3></div><button data-testid="close-message-drawer" className="close-button" onClick={onClose}><X /></button></div>
+    <div className="msg-body">{msgs.length === 0 && <p className="muted tiny">Start the conversation — kept attached to this {refId.startsWith('tx-') ? 'transaction' : 'request'}.</p>}
+      {msgs.map(m => <div key={m.id} className={`msg ${m.from_user === me ? 'mine' : ''}`} data-testid={`message-${m.id}`}><b>{m.from_name}</b><span>{m.text}</span></div>)}<div ref={endRef} /></div>
+    <div className="msg-input"><input data-testid="message-input" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Type a message…" /><button data-testid="send-message-button" className="button primary" onClick={send}><Send size={16} /></button></div>
   </div></div>;
 }
 
+const CATS = ['Presentation', 'Photography / Video', 'Tech Help', 'Academics', 'Design', 'Physical Resource', 'General'];
+function SmartComposer({ notify, onNeedPosted, onProvidePosted }) {
+  const [mode, setMode] = useState('need'); const [text, setText] = useState('');
+  const [parsed, setParsed] = useState(null); const [busy, setBusy] = useState(false);
+  const parse = async () => { if (!text.trim()) { notify('Describe what you need or can provide.'); return; } const r = await client.post('/intent/parse', { text }); setParsed({ ...r.data, intent: mode, budget: 300, price: 200 }); };
+  const post = async () => {
+    setBusy(true);
+    try {
+      if (parsed.intent === 'need') { const r = await client.post('/requests', { title: text, category: parsed.category, location: parsed.location, days: parsed.days, budget: Number(parsed.budget) || 0, description: '' }); onNeedPosted(r.data); notify(`Posted · ${r.data.notified} providers notified`); }
+      else { const r = await client.post('/provides', { kind: parsed.kind, category: parsed.category, name: text, price: Number(parsed.price) || 0, location: parsed.location, text }); onProvidePosted(r.data); }
+      setText(''); setParsed(null);
+    } catch (e) { notify(e.response?.data?.detail || 'Could not post'); }
+    setBusy(false);
+  };
+  return <div className="composer" data-testid="smart-composer">
+    <div className="intent-toggle"><button data-testid="intent-need" className={mode === 'need' ? 'on' : ''} onClick={() => { setMode('need'); setParsed(null); }}>I Need Something</button><button data-testid="intent-provide" className={mode === 'provide' ? 'on' : ''} onClick={() => { setMode('provide'); setParsed(null); }}>I Can Provide Something</button></div>
+    <div className="composer-input"><Sparkles size={18} /><input data-testid="composer-input" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && parse()} placeholder={mode === 'need' ? "e.g. Need a drafter for 3 days near Civil Block" : "e.g. I can do PPT design and LinkedIn photos"} /><button data-testid="composer-parse-button" className="button primary" onClick={parse}>Continue</button></div>
+    {parsed && <div className="confirm-card" data-testid="confirm-card">
+      <p className="eyebrow accent">CONFIRM & POST</p><p className="confirm-line" data-testid="confirm-line">{parsed.intent === 'need' ? 'Need' : 'Provide'} · {parsed.confirm.replace(/^(Need|Provide) · /, '')}</p>
+      <div className="confirm-chips">
+        <label>Category<select data-testid="confirm-category" value={parsed.category} onChange={e => setParsed({ ...parsed, category: e.target.value })}>{CATS.map(c => <option key={c}>{c}</option>)}</select></label>
+        {parsed.intent === 'need' && parsed.kind === 'resource' && <label>Days<input data-testid="confirm-days" type="number" value={parsed.days || 1} onChange={e => setParsed({ ...parsed, days: Number(e.target.value) })} /></label>}
+        <label>Location<input data-testid="confirm-location" value={parsed.location || ''} onChange={e => setParsed({ ...parsed, location: e.target.value })} placeholder="Add location" /></label>
+        {parsed.intent === 'need' ? <label>Budget ₹<input data-testid="confirm-budget" type="number" value={parsed.budget} onChange={e => setParsed({ ...parsed, budget: e.target.value })} /></label> : <label>Price ₹<input data-testid="confirm-price" type="number" value={parsed.price} onChange={e => setParsed({ ...parsed, price: e.target.value })} /></label>}
+      </div>
+      <button data-testid="composer-post-button" className="button primary wide" disabled={busy} onClick={post}>{parsed.intent === 'need' ? 'Post & see matches' : 'List & notify campus'} <ChevronRight size={16} /></button>
+    </div>}
+  </div>;
+}
+
+function MatchResults({ result, onHire, onSearch }) {
+  const s = result.matches?.services || []; const r = result.matches?.resources || [];
+  return <section className="section-block" data-testid="need-match-results"><div className="section-heading"><div><p className="eyebrow accent">INSTANT MATCHES</p><h2>{s.length + r.length} matches for "{result.title}"</h2></div></div>
+    <div className="match-grid">
+      {s.map(p => <div className="match-card" data-testid={`match-${p.id}`} key={p.id}><div className="match-top"><span className="match-score">{p.match}% match</span>{(p.verified || []).length ? <span className="tiny">✓ Verified</span> : null}</div><h3>{p.name}</h3><p className="muted">{p.skill} · ★{p.rating} · {money(p.price)}</p><div className="match-actions"><button data-testid={`match-hire-${p.id}`} className="button primary" onClick={() => onHire(p)}>Hire {money(p.price)}</button><button data-testid={`match-view-${p.id}`} className="button ghost" onClick={() => onSearch(p.skill)}>View</button></div></div>)}
+      {r.map(res => <div className="match-card" data-testid={`match-${res.id}`} key={res.id}><div className="match-top"><span className="resource-emoji small">{res.emoji}</span></div><h3>{res.name}</h3><p className="muted">{money(res.price)}/day · {res.condition}</p><div className="match-actions"><button data-testid={`match-view-${res.id}`} className="button ghost" onClick={() => onSearch(res.name)}>View resource</button></div></div>)}
+    </div>
+    {s.length + r.length === 0 && <p className="muted">No instant matches — providers have been notified and can apply first-come-first-served.</p>}
+  </section>;
+}
+
+function OpportunityCard({ opp, onOffer, onMessage }) {
+  return <div className="match-card" data-testid={`opportunity-${opp.id}`}><div className="match-top"><span className="match-score">{opp.match}% match</span><span className="tiny">{opp.location || 'NIT AP'}</span></div><h3>{opp.title}</h3><p className="muted">{opp.category} · {money(opp.budget)} · {opp.needer_name}</p><div className="match-actions">{opp.applied ? <span className="tiny">✓ Offered</span> : <button data-testid={`offer-${opp.id}`} className="button primary" onClick={() => onOffer(opp)}>Offer to Provide</button>}<button data-testid={`opp-message-${opp.id}`} className="button ghost" onClick={() => onMessage(opp.id, opp.title)}><MessageCircle size={15} /> Message</button></div></div>;
+}
+
 /* ---------------- Requests (create + FCFS + activity) ---------------- */
-function Requests({ user, notify, refreshHome, onOpenTx, onReview }) {
+function Requests({ user, notify, refreshHome, onMessage }) {
   const [tab, setTab] = useState('mine');
   const [mine, setMine] = useState([]); const [campus, setCampus] = useState([]); const [txs, setTxs] = useState([]);
   const [show, setShow] = useState(false); const [mode, setMode] = useState('one');
-  const [form, setForm] = useState({ title: '', category: 'Presentation', deadline: '', budget: 500, description: '', frequency: 'Weekly' });
+  const [form, setForm] = useState({ title: '', category: 'Presentation', deadline: '', budget: 500, description: '', frequency: 'Weekly', location: '' });
   const load = async () => { const [r, t] = await Promise.all([client.get('/requests'), client.get('/transactions')]); setMine(r.data.mine); setCampus(r.data.campus); setTxs(t.data); };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
   const create = async () => { if (!form.title.trim()) { notify('Add what you need first.'); return; } try { await client.post('/requests', { ...form, recurring: mode === 'recurring', budget: Number(form.budget) || 0 }); setShow(false); setForm({ ...form, title: '', description: '' }); notify('Request posted. Matching providers notified.'); load(); } catch (e) { notify(e.response?.data?.detail || 'Could not post'); } };
   const apply = async id => { try { const r = await client.post(`/requests/${id}/apply`); notify(`Applied · position #${r.data.position}`); load(); } catch (e) { notify(e.response?.data?.detail || 'Could not apply'); } };
   const select = async (reqId, appId) => { try { await client.post(`/requests/${reqId}/select/${appId}`); notify('Provider selected · hire started'); load(); refreshHome(); } catch (e) { notify(e.response?.data?.detail || 'Could not select'); } };
   const doAction = async (tx, action) => { try { const r = await client.post(`/transactions/${tx.id}/action`, { action }); notify(action === 'pay' ? 'Payment secured · contact revealed' : STATUS_LABEL[r.data.status] || 'Updated'); load(); refreshHome(); } catch (e) { notify(e.response?.data?.detail || 'Action failed'); } };
+  const quickReview = async (tx, rating) => { try { await client.post('/reviews', { transaction_id: tx.id, rating, text: '' }); notify('Thanks · rating saved'); load(); refreshHome(); } catch (e) { notify(e.response?.data?.detail || 'Could not rate'); } };
+  const cancelReq = async id => { try { await client.post(`/requests/${id}/cancel`); notify('Request cancelled'); load(); } catch (e) { notify('Could not cancel'); } };
+  const renewReq = async id => { try { await client.post(`/requests/${id}/renew`); notify('Request renewed for 14 days'); load(); } catch (e) { notify('Could not renew'); } };
+  const lifeTone = l => l === 'Completed' ? 'green' : (l === 'Cancelled' || l === 'Expired') ? '' : 'orange';
   return <section>
     <div className="page-title inline-title"><div><p className="eyebrow accent">YOUR DEMAND</p><h1>Requests & <em>activity.</em></h1><p className="hero-sub">Search first. Ask campus when you need to.</p></div><button data-testid="create-request-button" className="button primary" onClick={() => setShow(true)}><Plus size={17} /> Post a request</button></div>
     <div className="result-tabs"><span data-testid="tab-mine" className={tab === 'mine' ? 'selected' : ''} onClick={() => setTab('mine')}>My requests <b>{mine.length}</b></span><span data-testid="tab-campus" className={tab === 'campus' ? 'selected' : ''} onClick={() => setTab('campus')}>Campus <b>{campus.length}</b></span><span data-testid="tab-activity" className={tab === 'activity' ? 'selected' : ''} onClick={() => setTab('activity')}>Activity <b>{txs.length}</b></span></div>
 
     {tab === 'mine' && <div className="request-list">{mine.length === 0 ? <p className="muted empty-line">No requests yet. Post one when search comes up short.</p> : mine.map(r => <div className="request-row col" data-testid={`request-row-${r.id}`} key={r.id}>
-      <div className="request-row-top"><div className="request-icon"><FileText size={19} /></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline || 'flexible'} · {r.notified} providers notified</p></div><Badge tone={r.status === 'matched' ? 'green' : 'orange'}>{r.status}</Badge></div>
-      {r.applications?.length > 0 && r.status === 'open' && <div className="applicants"><p className="eyebrow">APPLICANTS · FCFS ORDER</p>{r.applications.map(a => <div className="applicant-row" key={a.id} data-testid={`applicant-${a.id}`}><span>#{a.order} {a.provider_name} · {a.match}% match</span><button data-testid={`select-applicant-${a.id}`} className="button primary" onClick={() => select(r.id, a.id)}>Select</button></div>)}</div>}
+      <div className="request-row-top"><div className="request-icon"><FileText size={19} /></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline || 'flexible'} · {r.location || 'campus'} · {r.notified} notified</p></div><Badge tone={lifeTone(r.lifecycle)} data-testid={`request-lifecycle-${r.id}`}>{r.lifecycle || r.status}</Badge></div>
+      {r.applications?.length > 0 && r.status === 'open' && <div className="applicants"><p className="eyebrow">APPLICANTS · FCFS ORDER</p>{r.applications.map(a => <div className="applicant-row" key={a.id} data-testid={`applicant-${a.id}`}><span>#{a.order} {a.provider_name} · {a.match}% match</span><div className="row-actions"><button data-testid={`msg-applicant-${a.id}`} className="button ghost" onClick={() => onMessage(r.id, r.title)}><MessageCircle size={14} /></button><button data-testid={`select-applicant-${a.id}`} className="button primary" onClick={() => select(r.id, a.id)}>Select</button></div></div>)}</div>}
       {r.status === 'matched' && <p className="tiny">✓ Provider selected — see Activity to complete the transaction.</p>}
+      <div className="row-actions end">{r.status === 'open' && <button data-testid={`cancel-request-${r.id}`} className="button ghost" onClick={() => cancelReq(r.id)}><Ban size={14} /> Cancel</button>}{(r.lifecycle === 'Expired' || r.status === 'cancelled') && <button data-testid={`renew-request-${r.id}`} className="button secondary" onClick={() => renewReq(r.id)}><RefreshCw size={14} /> Renew</button>}</div>
     </div>)}</div>}
 
-    {tab === 'campus' && <div className="request-list">{campus.map(r => <div className="request-row" data-testid={`campus-request-${r.id}`} key={r.id}><div className="request-icon"><FileText size={19} /></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline} · {r.needer_name} · {r.applications?.length || 0} applied</p></div>{r.status === 'open' ? <button data-testid={`apply-request-${r.id}`} className="button primary" onClick={() => apply(r.id)}>Apply (FCFS)</button> : <Badge tone="green">matched</Badge>}</div>)}</div>}
+    {tab === 'campus' && <div className="request-list">{campus.map(r => <div className="request-row" data-testid={`campus-request-${r.id}`} key={r.id}><div className="request-icon"><FileText size={19} /></div><div className="request-content"><h3>{r.title}</h3><p>{money(r.budget)} · {r.deadline} · {r.needer_name} · {r.applications?.length || 0} applied</p></div><div className="row-actions"><button data-testid={`msg-campus-${r.id}`} className="button ghost" onClick={() => onMessage(r.id, r.title)}><MessageCircle size={14} /></button>{r.status === 'open' ? <button data-testid={`apply-request-${r.id}`} className="button primary" onClick={() => apply(r.id)}>Offer (FCFS)</button> : <Badge tone="green">matched</Badge>}</div></div>)}</div>}
 
-    {tab === 'activity' && <div className="request-list">{txs.length === 0 ? <p className="muted empty-line">No transactions yet. Hire a provider or rent a resource to start.</p> : txs.map(tx => <TransactionCard key={tx.id} tx={tx} onAction={doAction} onReview={onReview} />)}</div>}
+    {tab === 'activity' && <div className="request-list">{txs.length === 0 ? <p className="muted empty-line">No transactions yet. Hire a provider or rent a resource to start.</p> : txs.map(tx => <TransactionCard key={tx.id} tx={tx} onAction={doAction} onMessage={onMessage} onQuickReview={quickReview} />)}</div>}
 
     {show && <div className="modal-backdrop"><div className="modal"><button data-testid="close-request-modal-button" className="close-button" onClick={() => setShow(false)}><X /></button>
       <p className="eyebrow accent">NEW DEMAND</p><h2>What do you need?</h2>
@@ -307,6 +364,7 @@ function Requests({ user, notify, refreshHome, onOpenTx, onReview }) {
       <label>What do you need?<input data-testid="request-title-input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Drone photography for department event" /></label>
       <label>Category<select data-testid="request-category-select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{['Presentation', 'Photography / Video', 'Tech Help', 'Academics', 'Design', 'Physical Resource'].map(c => <option key={c}>{c}</option>)}</select></label>
       <div className="two-col"><label>Deadline<input data-testid="request-deadline-input" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} placeholder="Due Friday" /></label><label>Budget<input data-testid="request-budget-input" type="number" value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })} /></label></div>
+      <label>Location<input data-testid="request-location-input" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Civil Block, Hostel C, Library" /></label>
       {mode === 'recurring' && <label>Frequency<select data-testid="request-frequency-select" value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>{['Weekly', 'Monthly', 'Custom'].map(f => <option key={f}>{f}</option>)}</select></label>}
       <label>Details<textarea data-testid="request-description-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe the task, deadline, quantity or constraints." /></label>
       <button data-testid="submit-request-button" className="button primary wide" onClick={create}>Post request <ChevronRight size={17} /></button>
@@ -348,7 +406,7 @@ function App() {
   const [page, setPage] = useState('home');
   const [data, setData] = useState({ providers: [], resources: [], requests: [], transactions: [] });
   const [selected, setSelected] = useState(null); const [resource, setResource] = useState(null);
-  const [reviewTx, setReviewTx] = useState(null);
+  const [msg, setMsg] = useState(null);
   const [toast, setToast] = useState(''); const [query, setQuery] = useState('');
   const hasGoogleSession = location.hash?.includes('session_id=');
 
@@ -365,7 +423,7 @@ function App() {
 
   const hire = async p => { try { await client.post('/transactions/hire', { provider_id: p.id, amount: p.price }); notify(`Hire request sent to ${p.name}`); setSelected(null); loadHome(); setPage('requests'); } catch (e) { notify(e.response?.data?.detail || 'Could not hire'); } };
   const rent = async (r, days) => { try { await client.post('/transactions/rent', { resource_id: r.id, days }); notify(`Reservation created for ${r.name}`); setResource(null); loadHome(); setPage('requests'); } catch (e) { notify(e.response?.data?.detail || 'Could not reserve'); } };
-  const submitReview = async (rating, text) => { try { await client.post('/reviews', { transaction_id: reviewTx.id, rating, text }); notify('Review saved · reputation updated'); } catch (e) { notify(e.response?.data?.detail || 'Could not review'); } setReviewTx(null); loadHome(); };
+  const openMsg = (ref, title) => setMsg({ ref, title });
 
   if (hasGoogleSession) return <AuthCallback onDone={finishAuth} onError={failGoogleAuth} />;
   if (authChecking) return <main className="onboard-page"><div className="auth-status" data-testid="auth-session-loading" role="status">Opening your Loop…</div></main>;
@@ -374,15 +432,15 @@ function App() {
 
   const openReqCount = data.requests.filter(r => r.status === 'open').length;
   let content;
-  if (page === 'home') content = <HomePage user={user} providers={data.providers} resources={data.resources} onSearch={search} setPage={setPage} />;
+  if (page === 'home') content = <HomePage user={user} resources={data.resources} onSearch={search} setPage={setPage} onHire={hire} notify={notify} openMsg={openMsg} />;
   else if (page === 'explore') content = selected ? <ProviderDetail provider={selected} onBack={() => setSelected(null)} onHire={() => hire(selected)} /> : resource ? <ResourceDetail resource={resource} onBack={() => setResource(null)} onRent={days => rent(resource, days)} /> : <Explore initialQuery={query} onSelectProvider={setSelected} onSelectResource={setResource} onPostRequest={() => setPage('requests')} />;
-  else if (page === 'requests') content = <Requests user={user} notify={notify} refreshHome={loadHome} onReview={setReviewTx} />;
+  else if (page === 'requests') content = <Requests user={user} notify={notify} refreshHome={loadHome} onMessage={openMsg} />;
   else if (page === 'insights') content = <Insights />;
   else content = <Profile user={user} onVerify={async () => { await client.post('/verification/approve'); await refreshUser(); notify('Student verification approved · you can transact now'); }} onUploaded={s => { refreshUser(); notify(`ID uploaded · status ${s}`); }} />;
 
   return <Shell page={page} setPage={p => { setSelected(null); setResource(null); setPage(p); }} user={user} onLogout={logout} reqCount={openReqCount}>
     {content}
-    {reviewTx && <ReviewModal tx={reviewTx} onClose={() => setReviewTx(null)} onSubmit={submitReview} />}
+    {msg && <MessageDrawer refId={msg.ref} title={msg.title} me={user.user_id} onClose={() => setMsg(null)} />}
     {toast && <div data-testid="loop-toast" className="loop-toast" role="status">{toast}</div>}
   </Shell>;
 }

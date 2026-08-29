@@ -58,10 +58,17 @@ class Personalization(BaseModel): choices: List[str]
 class RequestCreate(BaseModel):
     title: str; category: str = "General"; deadline: str = ""; budget: int = 0
     description: str = ""; recurring: bool = False; frequency: Optional[str] = ""
+    location: str = ""; days: Optional[int] = None
 class HireCreate(BaseModel): provider_id: str; amount: int; request_id: Optional[str] = None
 class RentCreate(BaseModel): resource_id: str; days: int = 1
 class Action(BaseModel): action: str
 class ReviewCreate(BaseModel): transaction_id: str; rating: int; text: str = ""
+class IntentParse(BaseModel): text: str
+class ProvideCreate(BaseModel):
+    text: Optional[str] = ""; kind: str = "service"; category: str = "General"
+    name: str = ""; price: int = 0; days: Optional[int] = None; deposit: int = 0
+    location: str = ""; condition: str = "Good condition"
+class MessageCreate(BaseModel): text: str
 
 NOW = lambda: datetime.now(timezone.utc).isoformat()
 
@@ -120,14 +127,86 @@ def ensure_can_transact(user: dict):
         raise HTTPException(403, "Student verification is required before transacting. Upload your college ID to get verified.")
 
 # ---------------- Matching ----------------
-def match_score(query: str, provider: dict) -> int:
+def match_score(query: str, provider: dict, location: str = "") -> int:
     tokens = [t for t in re.split(r"\s+", query.lower().strip()) if len(t) > 2]
     if not tokens: return provider.get("base_match", 70)
-    hay = " ".join([provider.get("skill",""), provider.get("name",""), provider.get("bio",""), provider.get("branch",""), " ".join(provider.get("tags",[]))]).lower()
+    hay = " ".join([provider.get("skill",""), provider.get("name",""), provider.get("bio",""), provider.get("branch",""), provider.get("category",""), " ".join(provider.get("tags",[]))]).lower()
     hits = sum(1 for t in tokens if t in hay)
     ratio = hits / len(tokens)
-    score = int(round(ratio * 78)) + int(provider.get("rating", 4.5) * 4)
+    score = int(round(ratio * 74)) + int(provider.get("rating", 4.5) * 4)
+    if provider.get("category") and provider["category"].lower() in query.lower(): score += 14
+    if location and provider.get("location"):
+        ploc = provider["location"].lower()
+        if any(t in ploc for t in re.split(r"[\s·,]+", location.lower()) if len(t) > 2): score += 8
     return max(0, min(99, score if hits else 30))
+
+# ---------------- NL intent parsing ----------------
+CATEGORY_KEYWORDS = {
+    "Physical Resource": ["drafter","drafting","calculator","casio","fx-991","camera","dslr","tripod","projector","charger","cycle","instrument","lab coat","hard disk","hdd","ssd","book"],
+    "Presentation": ["ppt","presentation","slides","deck","powerpoint","pitch"],
+    "Photography / Video": ["photo","photography","headshot","linkedin","portrait","video","reel","shoot","edit","event coverage"],
+    "Tech Help": ["laptop","repair","tech","code","coding","debug","software","install","website","app","fix"],
+    "Academics": ["tutor","tutoring","assignment","notes","academics","doubt","viva","homework","exam prep","project report"],
+    "Design": ["design","logo","poster","banner","canva","graphic","illustration","figma","thumbnail"],
+}
+RESOURCE_HINTS = ["drafter","drafting","calculator","casio","fx-991","camera","dslr","tripod","projector","charger","cycle","instrument","book","hdd","ssd"]
+PROVIDE_WORDS = ["i can","i offer","offer to","i provide","providing","i have","i'll lend","lend","rent out","rent it out","available to","i do ","giving on rent","for rent","can help with"]
+KNOWN_LOCS = ["hostel","library","civil block","mechanical block","ece block","campus","lab","mess","ground","academic block","admin block","nit ap","nit andhra"]
+
+def parse_intent(text: str, default_location: str = "") -> dict:
+    t = (text or "").lower().strip()
+    intent = "provide" if any(w in t for w in PROVIDE_WORDS) and not t.startswith(("need","want","looking","find me","i need")) else "need"
+    category, matched = "General", None
+    for cat, kws in CATEGORY_KEYWORDS.items():
+        for kw in kws:
+            if kw in t: category, matched = cat, kw; break
+        if matched: break
+    kind = "resource" if (category == "Physical Resource" or any(h in t for h in RESOURCE_HINTS)) else "service"
+    days = None
+    m = re.search(r"(\d+)\s*(day|days|week|weeks|hr|hrs|hour|hours)", t)
+    if m: days = int(m.group(1)) * (7 if "week" in m.group(2) else 1)
+    location = default_location
+    lm = re.search(r"(?:near|at|in|around|by)\s+([a-z0-9 .\-]{2,28})", t)
+    if lm: location = lm.group(1).strip().rstrip(".").title()
+    if not location:
+        for loc in KNOWN_LOCS:
+            if loc in t: location = loc.title(); break
+    parts = [("Provide" if intent == "provide" else "Need"), category]
+    if days: parts.append(f"{days} day{'s' if days > 1 else ''}")
+    if location: parts.append(f"near {location}")
+    missing = []
+    if kind == "resource" and intent == "need" and not days: missing.append("duration")
+    if not location: missing.append("location")
+    return {"intent": intent, "kind": kind, "category": category, "days": days, "location": location,
+            "title": (text or "").strip(), "confirm": " · ".join(parts), "missing": missing}
+
+async def learn(user_id: str, need_category=None, provide_category=None, location=None):
+    add = {}
+    if need_category and need_category != "General": add["learned.need_categories"] = need_category
+    if provide_category and provide_category != "General": add["learned.provide_categories"] = provide_category
+    if location: add["learned.locations"] = location
+    if add: await db.users.update_one({"user_id": user_id}, {"$addToSet": add})
+
+def is_expired(req: dict) -> bool:
+    exp = req.get("expires_at")
+    if not exp: return False
+    try: d = datetime.fromisoformat(exp)
+    except Exception: return False
+    if d.tzinfo is None: d = d.replace(tzinfo=timezone.utc)
+    return d < datetime.now(timezone.utc)
+
+TX_LIFECYCLE = {"HIRE_REQUESTED": "Accepted", "PROVIDER_ACCEPTED": "Accepted", "OWNER_ACCEPTED": "Accepted",
+                "PAYMENT_SECURED": "In progress", "PROVIDER_COMPLETED": "In progress", "PICKED_UP": "In progress",
+                "RETURNED": "In progress", "RETURN_CONFIRMED": "Completed", "COMPLETED": "Completed", "DECLINED": "Open"}
+
+async def lifecycle_label(req: dict) -> str:
+    if req.get("status") == "cancelled": return "Cancelled"
+    if req.get("status") == "expired" or (req.get("status") == "open" and is_expired(req)): return "Expired"
+    if req.get("status") == "matched":
+        tx = await db.transactions.find_one({"request_id": req["id"]}, {"_id": 0}, sort=[("created_at", -1)])
+        if tx: return TX_LIFECYCLE.get(tx["status"], "Matched")
+        return "Matched"
+    return "Open"
 
 # ---------------- Seed data ----------------
 SEED_PROVIDERS = [
@@ -300,20 +379,47 @@ async def provider(provider_id: str, user=Depends(require_session)):
 @api.post("/requests")
 async def create_request(payload: RequestCreate, user=Depends(require_session)):
     ensure_can_transact(user)
-    providers = [p for p in await db.providers.find().to_list(100)]
-    matched = [p for p in providers if match_score(f"{payload.title} {payload.category} {payload.description}", p) >= 50]
-    item = {"id": "req-" + uuid.uuid4().hex[:8], "needer_id": user["user_id"], "needer_name": user["name"], **payload.model_dump(), "status": "open", "notified": len(matched), "notified_ids": [p["id"] for p in matched], "created_at": NOW(), "seed": False}
+    text = f"{payload.title} {payload.category} {payload.description}"
+    providers = [clean(p) for p in await db.providers.find().to_list(100)]
+    resources = [clean(r) for r in await db.resources.find().to_list(100)]
+    svc = sorted([{**p, "match": match_score(text, p, payload.location)} for p in providers], key=lambda x: x["match"], reverse=True)
+    svc = [p for p in svc if p["match"] >= 50]
+    res = [r for r in resources if match_score(text, r, payload.location) >= 50 or any(t in " ".join([r["name"]] + r.get("tags", [])).lower() for t in text.lower().split() if len(t) > 2)]
+    now = datetime.now(timezone.utc)
+    item = {"id": "req-" + uuid.uuid4().hex[:8], "needer_id": user["user_id"], "needer_name": user["name"], **payload.model_dump(),
+            "status": "open", "notified": len(svc), "notified_ids": [p["id"] for p in svc],
+            "created_at": now.isoformat(), "expires_at": (now + timedelta(days=14)).isoformat(), "seed": False}
     await db.requests.insert_one(dict(item))
-    return clean(item)
+    await learn(user["user_id"], need_category=payload.category, location=payload.location)
+    return {**clean(item), "matches": {"services": svc[:6], "resources": res[:6]}}
 
 @api.get("/requests")
 async def list_requests(user=Depends(require_session)):
     mine = [clean(r) for r in await db.requests.find({"needer_id": user["user_id"]}).sort("created_at", -1).to_list(100)]
     seeded = [clean(r) for r in await db.requests.find({"seed": True}).sort("created_at", -1).to_list(100)]
-    # attach applications
     for r in mine + seeded:
+        if r.get("status") == "open" and is_expired(r):
+            await db.requests.update_one({"id": r["id"]}, {"$set": {"status": "expired"}}); r["status"] = "expired"
+        r["lifecycle"] = await lifecycle_label(r)
         r["applications"] = [clean(a) for a in await db.applications.find({"request_id": r["id"]}).sort("order", 1).to_list(100)]
     return {"mine": mine, "campus": seeded}
+
+@api.post("/requests/{request_id}/renew")
+async def renew_request(request_id: str, user=Depends(require_session)):
+    req = await db.requests.find_one({"id": request_id}, {"_id": 0})
+    if not req: raise HTTPException(404, "Request not found")
+    if req["needer_id"] != user["user_id"]: raise HTTPException(403, "Only the requester can renew this.")
+    now = datetime.now(timezone.utc)
+    await db.requests.update_one({"id": request_id}, {"$set": {"status": "open", "expires_at": (now + timedelta(days=14)).isoformat()}})
+    return {"ok": True, "status": "open"}
+
+@api.post("/requests/{request_id}/cancel")
+async def cancel_request(request_id: str, user=Depends(require_session)):
+    req = await db.requests.find_one({"id": request_id}, {"_id": 0})
+    if not req: raise HTTPException(404, "Request not found")
+    if req["needer_id"] != user["user_id"]: raise HTTPException(403, "Only the requester can cancel this.")
+    await db.requests.update_one({"id": request_id}, {"$set": {"status": "cancelled"}})
+    return {"ok": True, "status": "cancelled"}
 
 @api.post("/requests/{request_id}/apply")
 async def apply(request_id: str, user=Depends(require_session)):
@@ -324,8 +430,16 @@ async def apply(request_id: str, user=Depends(require_session)):
     if await db.applications.find_one({"request_id": request_id, "provider_id": user["user_id"]}):
         raise HTTPException(400, "You have already applied to this request.")
     order = await db.applications.count_documents({"request_id": request_id}) + 1
-    appn = {"id": "app-" + uuid.uuid4().hex[:8], "request_id": request_id, "provider_id": user["user_id"], "provider_name": user["name"], "match": match_score(f"{req['title']} {req.get('category','')}", {"skill": " ".join(user.get("personalization", [])), "name": user["name"], "bio": "", "branch": user.get("branch",""), "rating": user.get("reputation",{}).get("rating",4.5)}), "order": order, "status": "applied", "created_at": NOW(), "seed": False}
+    learned = user.get("learned", {})
+    signal = {"skill": " ".join(learned.get("provide_categories", []) + [user.get("branch", "")] + user.get("personalization", [])),
+              "category": " ".join(learned.get("provide_categories", [])), "tags": [], "branch": user.get("branch", ""),
+              "rating": user.get("reputation", {}).get("rating", 4.5)}
+    myloc = (learned.get("locations") or [""])[0]
+    match = max(55, match_score(f"{req['title']} {req.get('category', '')} {req.get('description', '')}", signal, myloc))
+    appn = {"id": "app-" + uuid.uuid4().hex[:8], "request_id": request_id, "provider_id": user["user_id"], "provider_name": user["name"],
+            "match": match, "order": order, "status": "applied", "created_at": NOW(), "seed": False}
     await db.applications.insert_one(dict(appn))
+    await learn(user["user_id"], provide_category=req.get("category"), location=req.get("location"))
     return {"ok": True, "application": clean(appn), "position": order}
 
 @api.post("/requests/{request_id}/select/{application_id}")
@@ -453,6 +567,101 @@ async def insights(user=Depends(require_session)):
         {"label": "Requests fulfilled", "value": fulfilled}],
         "demand": [["PPT Design", 42], ["Laptop Help", 31], ["Photography", 26], ["Video Editing", 19]],
         "undersupplied": [["Drafter", "37 searches · 8 available"], ["Laptop repair", "31 requests · 5 providers"], ["Engineering tutoring", "Demand rises near exams"]]}
+
+# ---------------- NL intent + provide listings + reverse discovery ----------------
+@api.post("/intent/parse")
+async def intent_parse(payload: IntentParse, user=Depends(require_session)):
+    default_loc = (user.get("learned", {}).get("locations") or [""])[0]
+    return parse_intent(payload.text, default_loc)
+
+@api.post("/provides")
+async def create_provide(payload: ProvideCreate, user=Depends(require_session)):
+    ensure_can_transact(user)
+    now = datetime.now(timezone.utc)
+    cat = payload.category
+    loc = payload.location or (user.get("learned", {}).get("locations") or [""])[0]
+    tags = list({w for w in re.split(r"[\s·,]+", f"{payload.name} {cat}".lower()) if len(w) > 2})
+    rating = user.get("reputation", {}).get("rating") or 5.0
+    if payload.kind == "resource":
+        listing = {"id": "resource-" + uuid.uuid4().hex[:8], "name": payload.name or cat, "tags": tags, "price": payload.price, "deposit": payload.deposit,
+                   "availability": "Available now", "location": loc or "Campus pickup", "condition": payload.condition, "owner": user["name"], "owner_id": user["user_id"],
+                   "owner_phone": "+91 91234 56789", "rating": rating, "rentals": 0, "emoji": "◆", "category": cat, "seed": False, "created_at": now.isoformat()}
+        await db.resources.insert_one(dict(listing))
+    else:
+        listing = {"id": "provider-" + uuid.uuid4().hex[:8], "name": user["name"], "branch": user.get("branch", ""), "year": user.get("year", ""),
+                   "skill": payload.name or cat, "tags": tags, "base_match": 72, "rating": rating, "gigs": user.get("reputation", {}).get("gigs_completed", 0),
+                   "similar": 0, "price": payload.price, "availability": "Available now", "phone": "+91 91234 56789", "location": loc or "NIT AP",
+                   "verified": (["Email Verified", "Student Verified"] if user.get("student_verified") else ["Email Verified"]),
+                   "why": f"Offers {cat.lower()} on campus.", "bio": payload.text or f"{cat} provider.", "owner_id": user["user_id"], "category": cat, "seed": False, "created_at": now.isoformat()}
+        await db.providers.insert_one(dict(listing))
+    await learn(user["user_id"], provide_category=cat, location=loc)
+    needs = [clean(r) for r in await db.requests.find({"status": "open", "needer_id": {"$ne": user["user_id"]}}).to_list(200)]
+    notified = [{"request_id": r["id"], "title": r["title"], "needer_name": r["needer_name"],
+                 "match": match_score(f"{r['title']} {r.get('category', '')} {r.get('description', '')}", listing, r.get("location", ""))} for r in needs if not is_expired(r)]
+    notified = sorted([n for n in notified if n["match"] >= 50], key=lambda x: x["match"], reverse=True)
+    return {"listing": clean(listing), "notified": len(notified), "notified_requests": notified[:6]}
+
+@api.get("/opportunities")
+async def opportunities(user=Depends(require_session)):
+    mylist = [clean(x) for x in await db.providers.find({"owner_id": user["user_id"]}).to_list(50)] + [clean(x) for x in await db.resources.find({"owner_id": user["user_id"]}).to_list(50)]
+    learned = user.get("learned", {})
+    provide_cats = learned.get("provide_categories", [])
+    tokens = provide_cats + [user.get("branch", "")] + [l.get("skill") or l.get("name", "") for l in mylist] + [t for l in mylist for t in l.get("tags", [])]
+    signal = {"skill": " ".join([s for s in tokens if s]), "category": " ".join(provide_cats), "tags": [], "branch": user.get("branch", ""), "rating": user.get("reputation", {}).get("rating") or 4.5}
+    needs = [clean(r) for r in await db.requests.find({"status": "open", "needer_id": {"$ne": user["user_id"]}}).sort("created_at", -1).to_list(200)]
+    out = []
+    for r in needs:
+        if is_expired(r): continue
+        m = match_score(f"{r['title']} {r.get('category', '')} {r.get('description', '')}", signal, r.get("location", ""))
+        if m >= 50:
+            applied = bool(await db.applications.find_one({"request_id": r["id"], "provider_id": user["user_id"]}))
+            out.append({**r, "match": m, "applied": applied})
+    out.sort(key=lambda x: x["match"], reverse=True)
+    return {"opportunities": out[:12], "has_signal": bool(signal["skill"].strip())}
+
+@api.get("/suggestions")
+async def suggestions(user=Depends(require_session)):
+    need_cats = user.get("learned", {}).get("need_categories", [])
+    resources = [clean(r) for r in await db.resources.find({"owner_id": {"$ne": user["user_id"]}}).to_list(100)]
+    if need_cats:
+        picked = [r for r in resources if any(c.lower() in " ".join([r.get("category", ""), r["name"]] + r.get("tags", [])).lower() for c in need_cats)] or resources
+    else:
+        picked = resources
+    return {"resources": picked[:6], "need_categories": need_cats}
+
+# ---------------- In-context messaging ----------------
+CANNED_REPLIES = ["Sure, I can help with that — when do you need it?", "Yes, available! Where on campus should we meet?", "Got it, sounds doable. Want to lock the timing?", "Happy to take this up. What's your deadline?"]
+
+async def thread_ctx(ref: str):
+    if ref.startswith("tx-"):
+        tx = await db.transactions.find_one({"id": ref}, {"_id": 0})
+        if not tx: return None
+        return {"needer_id": tx["needer_id"], "other_id": tx["counterparty_id"], "other_name": tx["counterparty_name"], "needer_name": tx["needer_name"], "title": tx["title"]}
+    req = await db.requests.find_one({"id": ref}, {"_id": 0})
+    if not req: return None
+    return {"needer_id": req["needer_id"], "other_id": req["needer_id"], "other_name": req["needer_name"], "needer_name": req["needer_name"], "title": req["title"]}
+
+@api.get("/threads/{ref}")
+async def get_thread(ref: str, user=Depends(require_session)):
+    ctx = await thread_ctx(ref)
+    if not ctx: raise HTTPException(404, "Conversation not found")
+    msgs = [clean(m) for m in await db.messages.find({"ref": ref}).sort("created_at", 1).to_list(300)]
+    header = ctx["other_name"] if user["user_id"] == ctx["needer_id"] else ctx["needer_name"]
+    return {"ref": ref, "title": ctx["title"], "with": header, "messages": msgs}
+
+@api.post("/threads/{ref}")
+async def post_message(ref: str, payload: MessageCreate, user=Depends(require_session)):
+    ctx = await thread_ctx(ref)
+    if not ctx: raise HTTPException(404, "Conversation not found")
+    now = datetime.now(timezone.utc)
+    await db.messages.insert_one({"id": "msg-" + uuid.uuid4().hex[:8], "ref": ref, "from_user": user["user_id"], "from_name": user["name"], "text": payload.text, "created_at": now.isoformat()})
+    other_id = ctx["other_id"] if user["user_id"] == ctx["needer_id"] else ctx["needer_id"]
+    other_name = ctx["other_name"] if user["user_id"] == ctx["needer_id"] else ctx["needer_name"]
+    if not await db.users.find_one({"user_id": other_id}):
+        import random
+        await db.messages.insert_one({"id": "msg-" + uuid.uuid4().hex[:8], "ref": ref, "from_user": other_id, "from_name": other_name, "text": random.choice(CANNED_REPLIES), "created_at": (now + timedelta(seconds=1)).isoformat()})
+    msgs = [clean(m) for m in await db.messages.find({"ref": ref}).sort("created_at", 1).to_list(300)]
+    return {"messages": msgs}
 
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origin_regex=r"https?://(localhost(:\d+)?|[^/]+\.preview\.emergentagent\.com)", allow_origins=os.environ["CORS_ORIGINS"].split(","), allow_methods=["*"], allow_headers=["*"])

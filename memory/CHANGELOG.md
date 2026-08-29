@@ -22,3 +22,23 @@ Frontend (`App.js` + `App.css`):
 - Profile with verification callout (upload + demo approve), trust-at-a-glance, reputation stats. Logout on sidebar + mobile header.
 
 Testing: iteration_6 — backend 20/20 pytest pass, frontend E2E pass (100%/100%), no open issues.
+
+## 2026-06 — HIGH PRIORITY friction-reduction (NRIAdda brief)
+Focused, additive changes (no rebuild) to reduce button-click friction on the core need/provide/match/transaction loop. All existing Loop rules preserved (verification gate, FCFS, mock UPI, contact-reveal-after-payment, seed vs real records).
+
+Backend (`server.py`, additive):
+- `POST /intent/parse` — natural-language parsing infers intent (need/provide), category, kind, duration (days), and location from one line (e.g. "Need a drafter for 3 days near Civil Block").
+- `POST /requests` now learns the user's need category/location, sets a 14-day `expires_at`, and returns proactive `matches` (services + resources ≥50%).
+- `POST /provides` — real users publish a service (→providers) or resource (→resources) listing; matching open needs are counted/notified; provide category + location learned.
+- `GET /opportunities` — reverse discovery: open needs (not mine) matching what I provide, with match% + applied flag. `GET /suggestions` — resources I may need based on learned need categories.
+- In-context messaging: `GET/POST /threads/{ref}` attached to a request or transaction, with a canned auto-reply from seeded personas.
+- Lifecycle + expiry: request lifecycle label (Open/Matched/Accepted/In progress/Completed/Cancelled/Expired), `POST /requests/{id}/renew`, `POST /requests/{id}/cancel`, lazy expiry on read.
+- Location-aware + category-bonus matching in `match_score`; automatic profile learning via `learn()` ($addToSet user.learned.{need_categories, provide_categories, locations}).
+
+Frontend (`App.js` + `App.css`, additive):
+- Home rebuilt around two obvious intents ("I Need Something" / "I Can Provide Something") + a single smart composer: describe → confirm (editable category/days/location/budget chips) → post. Posting a need shows instant match cards inline (Hire / View).
+- Reverse-discovery section "People who need what you provide" (Offer to Provide = FCFS apply, + Message) and "Resources you may need"; contextual prompt banner (add location / N strong matches).
+- Slide-in Message drawer from opportunity cards, transaction cards, and applicant/campus rows.
+- Requests: lifecycle badges + Cancel/Renew; Activity transaction cards gained inline quick-rating (1-tap stars) and Message.
+
+Verification: backend endpoints curl-verified end-to-end (parse, matches, provides+notify, opportunities, messaging+auto-reply, renew/cancel/lifecycle); frontend compiles clean and the onboarding→home→composer flow ran with no React runtime errors. Full frontend E2E by the testing agent not run this pass (budget-constrained); recommend a UI pass before shipping.
